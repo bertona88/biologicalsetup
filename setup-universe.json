@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "universe": "Setup Universe",
+  "id": "biological",
+  "name": "BiologicalSetup",
+  "domain": "biologicalsetup.com",
+  "url": "https://biologicalsetup.com/",
+  "field": "Biological systems",
+  "status": "preliminary-wrapper",
+  "rebuild": "from-scratch",
+  "plannedInteroperability": true,
+  "interfaceContract": null,
+  "greenfieldContracts": {
+    "vision": "VISION.md",
+    "domainModel": "BIOLOGICAL_MODEL_CONTRACT.md",
+    "interface": "INTERFACE_CONTRACT.md",
+    "claimsAndValidation": "CLAIMS_AND_VALIDATION.md",
+    "acceptance": "ACCEPTANCE_TESTS.md"
+  },
+  "firstAcceptedSlice": "Build one explicitly compartmentalized cell experiment with reaction–diffusion state, a controlled perturbation, and a microscopy observation model whose readouts trace back to the simulated state.",
+  "ownershipBoundary": "BiologicalSetup owns biological state and populations; MolecularSetup owns molecular/material dynamics; EgoSetup owns agent and institution rules; NoeticSetup owns synchronization observables.",
+  "claimGate": "No clinical, diagnostic, therapeutic, toxicity, or patient-specific inference is allowed; all biological validity domains and observation assumptions must be explicit.",
+  "currentPrototype": {
+    "status": "temporary-live-demo",
+    "role": "reference-snapshot",
+    "immutable": true,
+    "sharedRuntime": true,
+    "path": "prototype/",
+    "productionRelease": "20260726T002235Z-478235af2650",
+    "verifiedAt": "2026-07-26",
+    "deployedSourceSha256": "478235af26508aa70aa2af5f0196c9868b92ded1bed88106a9aa1a1cd86f8ba5",
+    "entryModel": "assets/simulations/biological.js",
+    "modelBoundary": {
+      "scope": "A Gray–Scott field inside a deformable cell is coupled to bounded phenomenological ODEs for ATP, calcium, caspase activity, membrane integrity, and cell-cycle phase.",
+      "limits": [
+        "Parameters are qualitative and normalized; the model cannot predict treatment response or patient biology.",
+        "Organelles and microscopy modes are explanatory renderings, not reconstructed microscope images.",
+        "Reaction–diffusion chemistry and pathway ODEs omit molecular identity, stochastic gene expression, and tissue mechanics."
+      ]
+    },
+    "productionManagedSeparately": true,
+    "keepLiveUntilReplacementAuthorized": true
+  },
+  "repository": "https://github.com/bertona88/biologicalsetup",
+  "siblings": [
+    {
+      "id": "pic",
+      "name": "PicSetup",
+      "domain": "picsetup.com",
+      "repository": "https://github.com/bertona88/picsetup"
+    },
+    {
+      "id": "electrical",
+      "name": "ElectricalSetup",
+      "domain": "electricalsetup.com",
+      "repository": "https://github.com/bertona88/electricalsetup"
+    },
+    {
+      "id": "gravity",
+      "name": "GravitySetup",
+      "domain": "gravitysetup.com",
+      "repository": "https://github.com/bertona88/gravitysetup"
+    },
+    {
+      "id": "two-photon",
+      "name": "TwoPhotonLithography",
+      "domain": "twophotonlithography.com",
+      "repository": "https://github.com/bertona88/twophotonlithography"
+    },
+    {
+      "id": "ego",
+      "name": "EgoSetup",
+      "domain": "egosetup.com",
+      "repository": "https://github.com/bertona88/egosetup"
+    },
+    {
+      "id": "quantum",
+      "name": "QuantumSetup",
+      "domain": "quantumsetup.ai",
+      "repository": "https://github.com/bertona88/quantumsetup"
+    },
+    {
+      "id": "noetic",
+      "name": "NoeticSetup",
+      "domain": "noeticsetup.com",
+      "repository": "https://github.com/bertona88/noeticsetup"
+    },
+    {
+      "id": "computation",
+      "name": "ComputationSetup",
+      "domain": "computationsetup.com",
+      "repository": "https://github.com/bertona88/computationsetup"
+    },
+    {
+      "id": "logistic",
+      "name": "LogisticSetup",
+      "domain": "logisticsetup.com",
+      "repository": "https://github.com/bertona88/logisticsetup"
+    },
+    {
+      "id": "molecular",
+      "name": "MolecularSetup",
+      "domain": "molecularsetup.com",
+      "repository": "https://github.com/bertona88/molecularsetup"
+    }
+  ],
+  "opticalSetup": {
+    "repositoryOwner": "LucaGenchi",
+    "external": true,
+    "changesVia": "focused-pull-request",
+    "repository": "https://github.com/LucaGenchi/optics-sketch",
+    "url": "https://opticalsetup.com/sketch/"
+  }
+}

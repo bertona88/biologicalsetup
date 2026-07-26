@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#080b0a" />
+    <meta
+      name="description"
+      content="A living rat cortical patch you can perturb and observe through simulated microscopy."
+    />
+    <title>BiologicalSetup — Rat cortical patch</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="microscope" aria-label="BiologicalSetup living specimen">
+      <canvas
+        id="specimenCanvas"
+        data-testid="specimen-canvas"
+        tabindex="0"
+        aria-label="Interactive 200 micrometre rat cortical tissue patch. Click or drag to stimulate neurons."
+      ></canvas>
+
+      <div class="optical-glass" aria-hidden="true"></div>
+      <div class="scan-line" aria-hidden="true"></div>
+
+      <header class="minimal-header">
+        <button class="specimen-identity glass-control" id="specimenButton" type="button" aria-expanded="false">
+          <span class="living-dot" aria-hidden="true"></span>
+          <span>
+            <strong>Rat cortical patch</strong>
+            <small>200 × 200 µm · 50 explicit neurons</small>
+          </span>
+          <span class="chevron" aria-hidden="true">⌄</span>
+        </button>
+
+        <nav class="modality-switch glass-control" aria-label="Imaging modality">
+          <button type="button" data-modality="phase" aria-pressed="true">Phase</button>
+          <button type="button" data-modality="calcium" aria-pressed="false">Ca²⁺</button>
+          <button type="button" data-modality="shg" aria-pressed="false">SHG</button>
+          <button type="button" data-modality="srs" aria-pressed="false">SRS</button>
+        </nav>
+
+        <div class="header-actions">
+          <button class="icon-button glass-control" id="settingsButton" type="button" aria-label="Microscope settings" aria-expanded="false">◌</button>
+          <button class="icon-button glass-control" id="shareButton" type="button" aria-label="Copy this specimen view">↗</button>
+        </div>
+      </header>
+
+      <section class="specimen-sheet glass-panel" id="specimenSheet" hidden>
+        <p class="eyebrow">CURATED SPECIMEN 01</p>
+        <h1>Rat cortical microcircuit</h1>
+        <p>
+          A shallow optical volume containing fifty explicit reduced-order neurons, dense procedural neuropil,
+          subcellular traffic and modality-specific observations generated from one evolving tissue state.
+        </p>
+        <dl>
+          <div><dt>Extent</dt><dd>200 × 200 × 40 µm</dd></div>
+          <div><dt>Entities</dt><dd>40 excitatory · 10 inhibitory</dd></div>
+          <div><dt>Default tool</dt><dd>Mechanical / current poke</dd></div>
+        </dl>
+        <p class="fine-print">Qualitative research visualization. Not a calibrated slice-culture predictor.</p>
+      </section>
+
+      <section class="settings-sheet glass-panel" id="settingsSheet" hidden>
+        <div class="setting-row">
+          <label for="focusRange">Focus plane <output id="focusOutput">20 µm</output></label>
+          <input id="focusRange" type="range" min="0" max="40" value="20" step="0.5" />
+        </div>
+        <div class="setting-row">
+          <label for="exposureRange">Exposure <output id="exposureOutput">1.00×</output></label>
+          <input id="exposureRange" type="range" min="0.45" max="1.8" value="1" step="0.01" />
+        </div>
+        <div class="setting-row shg-setting" hidden>
+          <label for="polarizationRange">SHG polarization <output id="polarizationOutput">28°</output></label>
+          <input id="polarizationRange" type="range" min="0" max="180" value="28" step="1" />
+        </div>
+        <div class="setting-row srs-setting" hidden>
+          <label for="srsBand">SRS contrast</label>
+          <select id="srsBand">
+            <option value="composite">Lipid / protein composite</option>
+            <option value="lipid">CH₂-rich lipid</option>
+            <option value="protein">CH₃-rich protein</option>
+          </select>
+        </div>
+        <div class="setting-row time-setting">
+          <span>Biological time</span>
+          <div class="segmented" id="timeScaleGroup" aria-label="Biological time scale">
+            <button type="button" data-time-scale="0" aria-pressed="false">Pause</button>
+            <button type="button" data-time-scale="1" aria-pressed="true">1×</button>
+            <button type="button" data-time-scale="4" aria-pressed="false">4×</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="selected-cell glass-panel" id="selectedCell" hidden>
+        <div>
+          <p class="eyebrow" id="cellType">EXCITATORY NEURON</p>
+          <strong id="cellName">Neuron 01</strong>
+        </div>
+        <div class="cell-readouts">
+          <span><small>Vm</small><b id="voltageReadout">−66 mV</b></span>
+          <span><small>Ca²⁺</small><b id="calciumReadout">resting</b></span>
+          <span><small>ATP</small><b id="metabolicReadout">96%</b></span>
+        </div>
+      </div>
+
+      <div class="activity-readout" aria-live="polite">
+        <span id="activityText">spontaneous activity</span>
+        <span class="activity-trace" id="activityTrace" aria-hidden="true"></span>
+      </div>
+
+      <div class="scale-bar" aria-hidden="true">
+        <span></span>
+        <small id="scaleLabel">20 µm</small>
+      </div>
+
+      <div class="focus-chip glass-control" id="focusChip" hidden>
+        focal plane <strong id="focusChipValue">20 µm</strong>
+      </div>
+
+      <div class="tool-dock glass-control" aria-label="Interaction tools">
+        <button class="tool-button active" id="pokeTool" type="button" aria-pressed="true">
+          <span class="tool-glyph" aria-hidden="true">⌁</span>
+          <span>Poke</span>
+        </button>
+        <span class="dock-separator" aria-hidden="true"></span>
+        <button class="tool-button" id="resetButton" data-testid="reset" type="button">
+          <span class="tool-glyph" aria-hidden="true">↺</span>
+          <span>Reset</span>
+        </button>
+      </div>
+
+      <div class="onboarding" id="onboarding">
+        <span class="onboarding-mark" aria-hidden="true"></span>
+        <p><strong>Poke a soma.</strong> Watch the same event through different microscopes.</p>
+      </div>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <noscript>This living specimen requires JavaScript.</noscript>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

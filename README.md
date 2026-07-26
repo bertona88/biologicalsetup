@@ -1,66 +1,62 @@
 # BiologicalSetup
 
-> **Preliminary Setup Universe wrapper.** The current demo is temporary; the full simulator is expected to be redesigned and rebuilt substantially from scratch.
+**A canvas-first living specimen workbench for interacting biological systems.**
 
-- **Live prototype:** https://biologicalsetup.com/
-- **Prototype release verified:** 2026-07-26 (`20260726T002235Z-478235af2650`); check the URL for current availability
-- **Field:** Biological systems
-- **Status:** Greenfield planning wrapper with a preserved prototype snapshot
+The current V2 opens directly into a 200 µm rat cortical patch containing fifty explicit reduced-order neurons. Poke neurons, move the focal plane and observe the same tissue through phase, calcium, SHG and SRS modes.
 
-## Vision
+![BiologicalSetup rat cortical patch](docs/preview.png)
 
-The intended BiologicalSetup product is an A multiscale biological experimentation workbench spanning cells, transport, reaction networks, microscopy observables, perturbations, and population-level behavior.
+## Run locally
 
-BiologicalSetup is part of the **Setup Universe**: independently deployed scientific and systems workbenches intended to become interoperable. Over time, setups should be able to orchestrate or interface with one another through explicit, versioned, unit-aware ports without transferring ownership or copying private implementation state.
-
-**First accepted end-to-end slice:** Build one explicitly compartmentalized cell experiment with reaction–diffusion state, a controlled perturbation, and a microscopy observation model whose readouts trace back to the simulated state.
-
-**Model boundary:** BiologicalSetup owns biological state and populations; MolecularSetup owns molecular/material dynamics; EgoSetup owns agent and institution rules; NoeticSetup owns synchronization observables.
-
-**Claim gate:** No clinical, diagnostic, therapeutic, toxicity, or patient-specific inference is allowed; all biological validity domains and observation assumptions must be explicit.
-
-## Important starting point
-
-Read [AGENTS.md](./AGENTS.md) before planning or implementing work.
-
-The present browser demo should not constrain the next architecture. Before substantial implementation, this repository expects `VISION.md`, `BIOLOGICAL_MODEL_CONTRACT.md`, `INTERFACE_CONTRACT.md`, `CLAIMS_AND_VALIDATION.md`, and `ACCEPTANCE_TESTS.md`.
-
-## Prototype model boundary
-
-The following describes only the current reference prototype, not the intended simulator.
-
-**Exact current scope:** A Gray–Scott field inside a deformable cell is coupled to bounded phenomenological ODEs for ATP, calcium, caspase activity, membrane integrity, and cell-cycle phase.
-
-**Known limits:**
-
-- Parameters are qualitative and normalized; the model cannot predict treatment response or patient biology.
-- Organelles and microscopy modes are explanatory renderings, not reconstructed microscope images.
-- Reaction–diffusion chemistry and pathway ODEs omit molecular identity, stochastic gene expression, and tissue mechanics.
-
-## Current prototype snapshot
-
-`prototype/` preserves the exact shared browser-prototype source associated with production release `20260726T002235Z-478235af2650`. Its recorded deployed-source SHA-256 is `478235af26508aa70aa2af5f0196c9868b92ded1bed88106a9aa1a1cd86f8ba5`.
-
-The snapshot contains all current Setup Universe demos because that release uses one shared, host-routed runtime. It is immutable, reference-only prior art: do not build the new architecture inside it. Moving, archiving, or removing it requires explicit user authorization after an accepted successor and preserved provenance.
-
-To run the snapshot locally:
+No build step or runtime dependency is required.
 
 ```sh
-npm run prototype:test
-npm run prototype:check
-npm run prototype:serve
+npm run verify
+npm run serve
 ```
 
-Then open http://127.0.0.1:4173/?setup=biological.
+Open `http://127.0.0.1:4173/`.
 
-These commands validate only the legacy prototype. This wrapper intentionally has no future-product test suite until the greenfield implementation begins.
+## Controls
 
-## Setup Universe
+- Click or touch: poke the nearest neuron.
+- Drag: continue the local perturbation.
+- Scroll: move the focal plane.
+- Ctrl/Command + scroll: optical zoom.
+- 1–4: phase, calcium, SHG and SRS.
+- Space: pause or resume.
+- R: reset.
+- Right click: select without stimulation.
 
-[PicSetup](https://github.com/bertona88/picsetup) · [ElectricalSetup](https://github.com/bertona88/electricalsetup) · [GravitySetup](https://github.com/bertona88/gravitysetup) · [TwoPhotonLithography](https://github.com/bertona88/twophotonlithography) · [EgoSetup](https://github.com/bertona88/egosetup) · [QuantumSetup](https://github.com/bertona88/quantumsetup) · [NoeticSetup](https://github.com/bertona88/noeticsetup) · [ComputationSetup](https://github.com/bertona88/computationsetup) · [LogisticSetup](https://github.com/bertona88/logisticsetup) · [MolecularSetup](https://github.com/bertona88/molecularsetup)
+## First specimen
 
-OpticalSetup remains in [LucaGenchi/optics-sketch](https://github.com/LucaGenchi/optics-sketch).
+The first slice contains:
 
-## License
+- 200 × 200 × 40 µm local tissue volume;
+- 40 excitatory and 10 inhibitory explicit neurons;
+- deterministic morphology, synthetic connectivity and subcellular traffic;
+- reduced membrane-voltage, calcium-indicator, metabolism and stress state;
+- sparse spontaneous activity;
+- direct local stimulation;
+- modality-specific observation engines rather than colour filters;
+- minimal contextual interface over a full-screen canvas.
 
-No open-source license has been selected yet.
+This is a qualitative research visualization, not a calibrated slice-culture predictor.
+
+## Repository map
+
+- [`VISION.md`](VISION.md) — product thesis and long-term canvas.
+- [`BIOLOGICAL_MODEL_CONTRACT.md`](BIOLOGICAL_MODEL_CONTRACT.md) — state, units, dynamics and omissions.
+- [`INTERFACE_CONTRACT.md`](INTERFACE_CONTRACT.md) — separation of biology, tools and microscopes.
+- [`CLAIMS_AND_VALIDATION.md`](CLAIMS_AND_VALIDATION.md) — allowed claims and validation layers.
+- [`ACCEPTANCE_TESTS.md`](ACCEPTANCE_TESTS.md) — product, model and observation acceptance.
+- [`src/model.js`](src/model.js) — cortical network state and stepping.
+- [`src/morphology.js`](src/morphology.js) — deterministic cells, neurites and organelles.
+- [`src/renderer.js`](src/renderer.js) — phase, calcium, SHG and SRS observations.
+- [`src/app.js`](src/app.js) — canvas interaction and compact instrument UI.
+
+## Scientific boundary
+
+The implementation distinguishes biological state from observation state. The user changes the specimen; the microscope reveals the result. Observation concepts are constrained by primary literature listed in [`docs/SCIENTIFIC_REFERENCES.md`](docs/SCIENTIFIC_REFERENCES.md), but numerical output and rendered pixels are not experimentally calibrated.
+
+No clinical, diagnostic, therapeutic, toxicity or patient-specific inference is supported.

@@ -1,5 +1,6 @@
 import { pointAlongPath } from "./morphology.js";
 import { clamp, lerp, smoothstep } from "./random.js";
+import { computeBackingScale } from "./render-budget.js";
 
 const TAU = Math.PI * 2;
 
@@ -71,7 +72,7 @@ function drawVariablePath(context, path, styleAtSegment, baseWidth = 1) {
 export class MicroscopeRenderer {
   constructor(canvas, patch, view = {}) {
     this.canvas = canvas;
-    this.context = canvas.getContext("2d", { alpha: false, desynchronized: true });
+    this.context = canvas.getContext("2d", { alpha: false });
     this.patch = patch;
     this.view = {
       modality: "phase",
@@ -118,9 +119,9 @@ export class MicroscopeRenderer {
     const rect = this.canvas.getBoundingClientRect();
     this.width = Math.max(1, rect.width);
     this.height = Math.max(1, rect.height);
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
-    const backingWidth = Math.round(this.width * this.dpr);
-    const backingHeight = Math.round(this.height * this.dpr);
+    this.dpr = computeBackingScale(this.width, this.height, window.devicePixelRatio || 1);
+    const backingWidth = Math.max(1, Math.floor(this.width * this.dpr));
+    const backingHeight = Math.max(1, Math.floor(this.height * this.dpr));
     if (this.canvas.width !== backingWidth || this.canvas.height !== backingHeight) {
       this.canvas.width = backingWidth;
       this.canvas.height = backingHeight;
@@ -151,7 +152,6 @@ export class MicroscopeRenderer {
 
   render(frameTimeSeconds) {
     this.frameTime = frameTimeSeconds;
-    this.resize();
     const context = this.context;
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     context.globalAlpha = 1;
@@ -232,9 +232,7 @@ export class MicroscopeRenderer {
     for (const path of this.patch.neuropil) {
       const depth = pathMeanDepth(path);
       const weight = focusWeight(depth, this.view.focusUm, 10);
-      const blur = Math.min(2.3, Math.abs(depth - this.view.focusUm) * 0.055);
       context.save();
-      context.filter = blur > 0.2 ? `blur(${blur}px)` : "none";
       tracePolyline(context, path);
       context.lineWidth = Math.max(0.12, path[0].radius * 1.7);
       context.strokeStyle = rgba(44, 53, 49, 0.075 + weight * 0.12);
@@ -248,7 +246,6 @@ export class MicroscopeRenderer {
       context.save();
       context.translate(nucleus.x + drift, nucleus.y - drift * 0.5);
       context.rotate(nucleus.angle);
-      context.filter = Math.abs(nucleus.z - this.view.focusUm) > 9 ? "blur(1.1px)" : "none";
       context.fillStyle = rgba(57, 64, 61, 0.035 + weight * 0.095);
       context.beginPath();
       context.ellipse(0, 0, nucleus.rx, nucleus.ry, 0, 0, TAU);
@@ -269,12 +266,9 @@ export class MicroscopeRenderer {
   drawPhaseNeuron(neuron) {
     const context = this.context;
     const depthWeight = focusWeight(neuron.z, this.view.focusUm, 7.2);
-    const depthDistance = Math.abs(neuron.z - this.view.focusUm);
-    const blur = Math.min(5.2, depthDistance * 0.16);
     const contrast = (0.08 + depthWeight * 0.92) * this.view.exposure;
 
     context.save();
-    context.filter = blur > 0.18 ? `blur(${blur}px)` : "none";
 
     for (const path of neuron.dendrites) {
       const pathWeight = focusWeight(pathMeanDepth(path), this.view.focusUm, 8.5);
@@ -295,8 +289,6 @@ export class MicroscopeRenderer {
 
     const cellPath = makeCellPath(neuron, this.patch.timeSeconds);
     context.save();
-    context.shadowColor = rgba(238, 244, 234, 0.72 * depthWeight);
-    context.shadowBlur = 3.2;
     context.strokeStyle = rgba(242, 246, 239, (0.075 + depthWeight * 0.19) * contrast);
     context.lineWidth = 1.2;
     context.stroke(cellPath);
@@ -407,12 +399,7 @@ export class MicroscopeRenderer {
     const depth = focusWeight(neuron.z, this.view.focusUm, 8.5);
     const fluorescence = clamp(0.025 + neuron.state.indicator * 1.28, 0, 1.4) * this.view.exposure;
     const alpha = clamp((0.06 + fluorescence * 0.62) * depth, 0.015, 0.95);
-    const glow = clamp(neuron.state.spikeGlow * 0.75 + fluorescence * 0.32, 0, 1);
     context.save();
-    const blur = Math.min(3.3, Math.abs(neuron.z - this.view.focusUm) * 0.085);
-    context.filter = blur > 0.25 ? `blur(${blur}px)` : "none";
-    context.shadowColor = rgba(64, 255, 147, 0.72 * glow * depth);
-    context.shadowBlur = 7 + glow * 12;
 
     for (const path of neuron.dendrites) {
       const pathWeight = focusWeight(pathMeanDepth(path), this.view.focusUm, 8.5);
@@ -463,8 +450,6 @@ export class MicroscopeRenderer {
       if (fade <= 0) continue;
       const paths = [...neuron.dendrites, neuron.axon];
       context.save();
-      context.shadowColor = "rgba(111,255,173,0.9)";
-      context.shadowBlur = 8;
       for (const path of paths) {
         if (path.length < 2) continue;
         const point = pointAlongPath(path, progress);
@@ -600,8 +585,6 @@ export class MicroscopeRenderer {
     const proteinVisible = band !== "lipid";
     const metabolic = neuron.state.metabolic;
     context.save();
-    const blur = Math.min(2.2, Math.abs(neuron.z - this.view.focusUm) * 0.06);
-    context.filter = blur > 0.22 ? `blur(${blur}px)` : "none";
 
     if (lipidVisible) {
       for (const path of [...neuron.dendrites, neuron.axon]) {
@@ -738,8 +721,6 @@ export class MicroscopeRenderer {
 
     if (this.pointer.down) {
       context.fillStyle = "rgba(246,255,250,0.92)";
-      context.shadowColor = "rgba(184,255,215,0.9)";
-      context.shadowBlur = 9;
       context.beginPath();
       context.arc(point.x, point.y, 1.7, 0, TAU);
       context.fill();

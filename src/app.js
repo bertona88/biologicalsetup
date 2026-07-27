@@ -9,6 +9,7 @@ import {
 } from "./model.js";
 import { MicroscopeRenderer } from "./renderer.js";
 import { clamp } from "./random.js";
+import { MAX_RENDER_HZ } from "./render-budget.js";
 
 const elements = {
   canvas: document.querySelector("#specimenCanvas"),
@@ -80,10 +81,22 @@ let pointerDown = false;
 let lastPokeTime = -Infinity;
 let accumulator = 0;
 let previousFrame = performance.now();
+let lastRenderedFrame = -Infinity;
+let frameRequestId = 0;
 let lastUiUpdate = -Infinity;
 let toastTimer = 0;
 let focusChipTimer = 0;
 let onboardingDismissed = false;
+const runtimeMetrics = {
+  renderedFrames: 0,
+  backingPixels: elements.canvas.width * elements.canvas.height,
+};
+Object.defineProperty(window, "__biologicalSetupMetrics", {
+  value: runtimeMetrics,
+  configurable: false,
+  enumerable: false,
+  writable: false,
+});
 
 function showToast(message) {
   window.clearTimeout(toastTimer);
@@ -358,7 +371,10 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-window.addEventListener("resize", updateScaleBar);
+window.addEventListener("resize", () => {
+  renderer.resize();
+  updateScaleBar();
+});
 
 function updateUi(now) {
   if (now - lastUiUpdate < 90) return;
@@ -374,7 +390,19 @@ function updateUi(now) {
   }
 }
 
+function scheduleFrame() {
+  if (frameRequestId || document.visibilityState === "hidden") return;
+  frameRequestId = requestAnimationFrame(frame);
+}
+
 function frame(now) {
+  frameRequestId = 0;
+  if (document.visibilityState === "hidden") return;
+  if (now - lastRenderedFrame < 1000 / MAX_RENDER_HZ) {
+    scheduleFrame();
+    return;
+  }
+  lastRenderedFrame = now;
   const elapsed = Math.min(0.06, Math.max(0, (now - previousFrame) / 1000));
   previousFrame = now;
   if (timeScale > 0) {
@@ -388,11 +416,20 @@ function frame(now) {
     if (steps === 140) accumulator = 0;
   }
   renderer.render(now / 1000);
+  runtimeMetrics.renderedFrames += 1;
+  runtimeMetrics.backingPixels = elements.canvas.width * elements.canvas.height;
   updateUi(now);
-  requestAnimationFrame(frame);
+  scheduleFrame();
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  previousFrame = performance.now();
+  lastRenderedFrame = -Infinity;
+  scheduleFrame();
+});
 
 applyRestoredView();
 updateScaleBar();
-requestAnimationFrame(frame);
+scheduleFrame();
 window.setTimeout(dismissOnboarding, 10_000);

@@ -25,6 +25,9 @@ The current suite checks:
 - reliable firing after a deliberate poke;
 - excitatory and inhibitory connection signs;
 - bounded shareable view state without hidden biological state.
+- a 30 Hz render ceiling and a 1920 × 1080 backing-pixel budget;
+- suspension of the animation loop while the page is hidden;
+- no per-object Canvas 2D blur or shadow effects in the public renderer.
 
 ## Manual first-paint acceptance
 
@@ -92,9 +95,17 @@ For the default seed over five simulated seconds:
 
 A single normal poke must not permanently place the network into a runaway high-frequency state.
 
-## Performance target
+## Performance and safety target
 
-The target is smooth interaction on a current laptop browser at 1280 × 720 with device pixel ratio capped at 2. Performance profiling must distinguish:
+The target is smooth interaction on a current laptop browser at 1280 × 720. The public renderer must:
+
+- render at no more than 30 frames per second;
+- allocate no more than 1920 × 1080 backing pixels regardless of viewport or device pixel ratio;
+- stop scheduling animation frames while the document is hidden;
+- avoid per-entity `CanvasRenderingContext2D.filter` blur and `shadowBlur`, which can allocate large intermediate surfaces in browser GPU processes;
+- resize the backing canvas only in response to an actual viewport resize.
+
+Performance profiling must distinguish:
 
 - biological stepping;
 - morphology rendering;
@@ -102,6 +113,22 @@ The target is smooth interaction on a current laptop browser at 1280 × 720 with
 - layout and compositing.
 
 A visual result is not accepted if pointer response is delayed enough to break the perceived connection between poke and firing. Performance profiling is still required on representative devices before public acceptance.
+
+Public deployment is blocked until a sustained foreground run and repeated open/close cycles complete in both Chromium and Safari without unbounded browser or GPU-process memory growth.
+
+The bounded Chromium profile can be run off-device with:
+
+```sh
+npm run profile:safety
+```
+
+The same bounded workload can be run against Playwright WebKit with:
+
+```sh
+npm run profile:safety:webkit
+```
+
+The WebKit result is an additional engine check, not a substitute for final acceptance in Safari on representative Apple hardware.
 
 ## Accessibility acceptance
 

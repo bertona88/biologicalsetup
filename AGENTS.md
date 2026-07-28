@@ -2,73 +2,72 @@
 
 ## Repository status
 
-This repository is the preliminary wrapper for **BiologicalSetup** (biologicalsetup.com), one system in the **Setup Universe**.
+This repository contains the greenfield V2 implementation of BiologicalSetup. The previous shared Setup Universe prototype is obsolete and should remain available through Git history rather than as the product architecture.
 
-The current browser demo is only a starting artifact. It is not the final product vision, not the final architecture, and not a commitment to the current UI, controls, numerical model, or source layout. The intended BiologicalSetup simulator will be designed and implemented substantially from scratch.
+The current accepted direction is a canvas-first living specimen workbench. Read the repository contracts before changing behaviour.
 
-Production release `20260726T002235Z-478235af2650` was verified at https://biologicalsetup.com/ on 2026-07-26. Current availability is external state and must be checked live rather than inferred from this repository.
+## Core product laws
 
-Its exact source snapshot is preserved under `prototype/` as immutable, reference-only prior art. It is not the architecture that future work should extend. Do not modify that snapshot as part of the rebuild. It may be moved, archived, or removed only with explicit user authorization after a successor has been accepted and its provenance retained.
+- The specimen is the product. Do not surround it with permanent dashboard rails.
+- BiologicalSetup models sets of interacting biological entities, not one decorative cell.
+- One biological source of truth feeds multiple observation instruments.
+- Tools change biological or physical state; they never paint pixels directly.
+- A modality switch changes observation state, not biological state.
+- The specimen must be autonomously alive on first paint.
+- Fine procedural motion is allowed only when it is state-aware and honestly documented.
+- Curated end-to-end specimens take priority over broad empty editors.
 
-## Core directive
+## First vertical slice
 
-- Approach the next simulator as a greenfield scientific product.
-- Do not optimize or expand the prototype merely because it already exists.
-- Before substantial implementation, establish the new product and model boundaries in repository-visible documents:
-  - `VISION.md`
-  - `BIOLOGICAL_MODEL_CONTRACT.md`
-  - `INTERFACE_CONTRACT.md`
-  - `CLAIMS_AND_VALIDATION.md`
-  - `ACCEPTANCE_TESTS.md`
-- A convincing animation is not sufficient. The intended simulator needs explicit state, units, governing rules, numerical methods, direct manipulation, measurements, experiments, failure states, and validation appropriate to its claims.
-- Label qualitative, reduced-order, heuristic, and pedagogical behavior honestly. Never silently promote it to calibrated physical prediction.
-- Treat physical, biological, behavioral, social, operational, and performance predictions with the same evidence discipline: state the validity domain, uncertainty, and nonclaims.
+The rat cortical patch is the first acceptance boundary:
 
-## BiologicalSetup direction
+- 200 × 200 × 40 µm;
+- fifty explicit reduced-order neurons;
+- sparse recurrent activity;
+- direct poke interaction;
+- phase, calcium, SHG and SRS observation modes;
+- minimal contextual UI.
 
-The intended BiologicalSetup product is an A multiscale biological experimentation workbench spanning cells, transport, reaction networks, microscopy observables, perturbations, and population-level behavior.
+Do not add a new preset by weakening or bypassing the model/observation separation.
 
-**First accepted end-to-end slice:** Build one explicitly compartmentalized cell experiment with reaction–diffusion state, a controlled perturbation, and a microscopy observation model whose readouts trace back to the simulated state.
+## Architecture
 
-**Ownership boundary:** BiologicalSetup owns biological state and populations; MolecularSetup owns molecular/material dynamics; EgoSetup owns agent and institution rules; NoeticSetup owns synchronization observables.
+- `src/model.js` owns biological state and time stepping.
+- `src/morphology.js` owns deterministic geometry and subcellular paths.
+- `src/renderer.js` reads model state and produces modality-specific images.
+- `src/app.js` maps input to explicit model actions and manages view state.
 
-**Claim gate:** No clinical, diagnostic, therapeutic, toxicity, or patient-specific inference is allowed; all biological validity domains and observation assumptions must be explicit.
+Keep model modules DOM-free so they remain unit-testable.
 
-Its Setup Universe interface should eventually couple biological samples and signals to optical microscopes, molecular models, electrical stimulation, and computational analysis. This direction is provisional until a written interface contract is reviewed.
+## Scientific discipline
 
-## Setup Universe doctrine
+- State coordinate systems, units, signs, timebases and normalized conventions.
+- Prefer primary scientific references.
+- Declare preparation and label assumptions for every microscopy mode.
+- Distinguish model state, procedural visual support and acquisition artifacts.
+- Do not convert normalized values into physical units without calibration.
+- Never imply clinical, therapeutic, toxicity or patient-specific validity.
+- Keep the exact omission list current when scope changes.
 
-- BiologicalSetup is one composable setup inside a larger universe of scientific and systems workbenches.
-- Setup Universe repositories are independently deployed workbenches intended to become interoperable; that interoperability does not exist merely because the repositories share a family name.
-- Setups should eventually be able to contain, drive, observe, or exchange well-defined state with other setups. “Contain” means orchestrate or reference another independently owned setup through an interface; it does not mean vendor its source, copy its internal state, or transfer authority over it.
-- Cross-setup interoperability must use explicit, versioned interfaces. Every payload must identify schema version, units or an explicit dimensionless convention, coordinate frame where relevant, clock or timebase, uncertainty, provenance, and source-of-truth ownership.
-- Do not couple repositories through undocumented globals, copied internal state, visual imitation, or assumptions about another setup's private implementation.
-- There is no universal interface yet. Define only the ports and conversions justified by an actual use case; keep unknowns explicit.
-- OpticalSetup is externally owned and maintained in Luca Genchi's existing repository. Changes there require a focused proposal or pull request and must preserve Luca's ownership and review boundary.
-- Each Setup Universe repository remains independently understandable, testable, and deployable even when it participates in a larger composed experiment.
+## Testing
 
-## Prototype boundary
+Run `npm run verify` before committing.
 
-- `prototype/` is the immutable reference snapshot associated with production release `20260726T002235Z-478235af2650`, verified on 2026-07-26.
-- The shared snapshot contains multiple Setup Universe demos because the current production deployment is a host-routed common runtime.
-- The snapshot's tests validate only the legacy prototype. They are not acceptance tests for the future BiologicalSetup product.
-- Do not infer future APIs or styling from it.
-- Keep the live demo online unless the user explicitly authorizes a replacement deployment.
-- Do not deploy from this repository or change DNS as an incidental consequence of local development.
+Tests should cover:
 
-## Scientific and engineering quality
+- determinism;
+- numerical bounds;
+- biological causality;
+- observation separation;
+- adversarial or repeated interactions;
+- first-paint interface constraints.
 
-- Prefer primary scientific references and document modeling assumptions.
-- State coordinate systems, units, signs, time bases, boundary conditions, and solver stability limits.
-- Keep deterministic seeds or reproducible fixtures where stochastic behavior exists.
-- Test invariants and conservation or accounting laws where applicable, not only DOM presence.
-- Validate numerical behavior at parameter extremes and include adversarial or degenerate cases.
-- Distinguish model validation, browser smoke testing, deployment, and public acceptance as separate completion boundaries.
+Browser visual review and performance profiling are separate from model tests.
 
 ## Working agreement
 
-- Read this file and the repository's current status documents before editing.
-- Preserve unrelated user work and inspect repository state before commits.
+- Preserve unrelated user work.
 - Keep changes scoped to this repository unless cross-repository work is explicitly requested.
-- Do not push, deploy, publish, message collaborators, or alter external services without authority for that action.
-- When the greenfield rebuild begins, prefer a small end-to-end scientific experiment over a broad mock interface.
+- Do not deploy, alter DNS or modify another Setup repository incidentally.
+- Do not reintroduce the old shared-runtime architecture.
+- Prefer a small credible living experiment over a large mock interface.

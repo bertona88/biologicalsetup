@@ -1,12 +1,26 @@
 {
   "name": "biologicalsetup",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Preliminary Setup Universe wrapper for BiologicalSetup.",
+  "type": "module",
+  "description": "A composable, paper-backed biological slide laboratory powered by Rust and WebAssembly.",
   "homepage": "https://biologicalsetup.com/",
   "scripts": {
+    "dev": "node --require ./tools/vite-runtime-shim.cjs ./node_modules/vite/bin/vite.js",
+    "wasm:build": "node tools/build-wasm.mjs",
+    "build": "npm run wasm:build && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:rust": "node tools/test-rust.mjs",
+    "test:wasm": "npm run wasm:build && node --test tests/wasm.test.mjs",
+    "test:interface": "node --test tests/interface.test.mjs tests/references.test.mjs",
+    "test:http": "node --require ./tools/vite-runtime-shim.cjs tools/http-smoke.mjs",
+    "verify": "npm run test:rust && npm run test:wasm && npm run test:interface && npm run build && npm run test:http",
+    "benchmark": "npm run wasm:build && node tools/benchmark.mjs",
     "prototype:test": "npm --prefix prototype test",
     "prototype:check": "npm --prefix prototype run check",
     "prototype:serve": "npm --prefix prototype run serve"
+  },
+  "devDependencies": {
+    "vite": "8.1.5"
   }
 }

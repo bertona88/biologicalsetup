@@ -58,9 +58,33 @@ impl Fields {
         (ix, iy)
     }
 
+    pub fn cell_at(x_um: f32, y_um: f32) -> usize {
+        let (ix, iy) = Self::coordinates(x_um, y_um);
+        iy * FIELD_WIDTH + ix
+    }
+
     pub fn sample(&self, channel: usize, x_um: f32, y_um: f32) -> f32 {
         let (ix, iy) = Self::coordinates(x_um, y_um);
         self.values[Self::index(channel, ix, iy)]
+    }
+
+    /// Atomically withdraws a concentration increment from one field cell.
+    ///
+    /// Callers aggregate competing sinks before using this method so the
+    /// returned amount is the single source of truth for downstream mass
+    /// accounting.
+    pub fn consume_cell(&mut self, channel: usize, cell: usize, requested: f32) -> f32 {
+        if channel >= FIELD_COUNT
+            || cell >= FIELD_LEN
+            || !requested.is_finite()
+            || requested <= 0.0
+        {
+            return 0.0;
+        }
+        let index = channel * FIELD_LEN + cell;
+        let consumed = requested.min(self.values[index].max(0.0));
+        self.values[index] -= consumed;
+        consumed
     }
 
     pub fn gradient(&self, channel: usize, x_um: f32, y_um: f32) -> (f32, f32) {
@@ -190,6 +214,10 @@ impl Fields {
             .sum()
     }
 
+    pub(crate) fn pending_sources(&self) -> &[f32] {
+        &self.sources
+    }
+
     #[cfg(test)]
     pub fn set_cell(&mut self, channel: usize, ix: usize, iy: usize, value: f32) {
         self.values[Self::index(channel, ix, iy)] = value;
@@ -223,5 +251,36 @@ mod tests {
         assert!(fields.sum(CUE) < initial);
         assert!(fields.values.iter().all(|value| *value >= 0.0));
     }
-}
 
+    #[test]
+    fn temporal_refinement_reduces_diffusion_error() {
+        fn evolved(dt: f32, steps: usize) -> Fields {
+            let mut fields = Fields::new(0.0);
+            fields.set_cell(GLUCOSE, FIELD_WIDTH / 2, FIELD_HEIGHT / 2, 10.0);
+            for _ in 0..steps {
+                fields.step(dt);
+            }
+            fields
+        }
+
+        fn l1_difference(left: &Fields, right: &Fields) -> f64 {
+            left.values[..super::FIELD_LEN]
+                .iter()
+                .zip(&right.values[..super::FIELD_LEN])
+                .map(|(left, right)| f64::from((*left - *right).abs()))
+                .sum()
+        }
+
+        let coarse = evolved(0.05, 10);
+        let refined = evolved(0.025, 20);
+        let reference = evolved(0.0125, 40);
+        let coarse_error = l1_difference(&coarse, &reference);
+        let refined_error = l1_difference(&refined, &reference);
+
+        assert!(
+            refined_error < coarse_error * 0.6,
+            "temporal refinement did not reduce error enough: coarse={coarse_error}, \
+             refined={refined_error}"
+        );
+    }
+}

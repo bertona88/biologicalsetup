@@ -138,9 +138,8 @@ export class BiologicalEngine {
   }
 
   stateHash() {
-    const low = BigInt(this.exports.world_state_hash_low());
-    const high = BigInt(this.exports.world_state_hash_high());
+    const low = BigInt(this.exports.world_state_hash_low() >>> 0);
+    const high = BigInt(this.exports.world_state_hash_high() >>> 0);
     return (high << 32n) | low;
   }
 }
-

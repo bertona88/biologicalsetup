@@ -39,6 +39,7 @@ pub struct Entities {
     pub e: Vec<f32>,
     pub f: Vec<f32>,
     pub target: Vec<u32>,
+    capacity: usize,
     next_id: u32,
 }
 
@@ -59,12 +60,21 @@ impl Entities {
             e: Vec::with_capacity(capacity),
             f: Vec::with_capacity(capacity),
             target: Vec::with_capacity(capacity),
+            capacity,
             next_id: 1,
         }
     }
 
     pub fn len(&self) -> usize {
         self.ids.len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    pub(crate) fn next_id(&self) -> u32 {
+        self.next_id
     }
 
     pub fn push(
@@ -75,7 +85,7 @@ impl Entities {
         angle: f32,
         radius: f32,
     ) -> Option<u32> {
-        if self.len() >= MAX_ENTITIES {
+        if self.len() >= self.capacity {
             return None;
         }
         let id = self.next_id;
@@ -122,5 +132,34 @@ impl Entities {
             self.target.swap_remove(index);
         }
     }
+}
 
+#[cfg(test)]
+mod tests {
+    use super::{Entities, EntityKind};
+
+    #[test]
+    fn configured_capacity_is_enforced_and_ids_are_not_reused() {
+        let mut entities = Entities::new(2);
+        let first = entities
+            .push(EntityKind::Bacterium, 10.0, 10.0, 0.0, 1.0)
+            .unwrap();
+        let second = entities
+            .push(EntityKind::Bacterium, 20.0, 10.0, 0.0, 1.0)
+            .unwrap();
+
+        assert!(
+            entities
+                .push(EntityKind::Bacterium, 30.0, 10.0, 0.0, 1.0)
+                .is_none()
+        );
+
+        entities.remove_indices(&mut vec![0]);
+        let replacement = entities
+            .push(EntityKind::Bacterium, 30.0, 10.0, 0.0, 1.0)
+            .unwrap();
+        assert!(replacement > second);
+        assert!(second > first);
+        assert_eq!(entities.len(), entities.capacity());
+    }
 }

@@ -47,6 +47,10 @@ impl Rng {
         }
         (self.next_u64() as usize) % upper_exclusive
     }
+
+    pub(crate) fn state_word(&self) -> u64 {
+        self.state
+    }
 }
 
 #[cfg(test)]
@@ -68,4 +72,3 @@ mod tests {
         assert_ne!(rng.next_u64(), 0);
     }
 }
-

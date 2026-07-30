@@ -1,5 +1,16 @@
 # Acceptance tests
 
+This document defines release criteria. A listed criterion is not, by itself, a
+claim that the current implementation passes it or that an automated test
+exists. Release review must record the evidence for each item and distinguish:
+
+- automated engine, ABI, source, build, and HTTP checks;
+- manual real-browser, responsive-layout, pointer, keyboard, and touch checks;
+- scientific review of equations, units, references, labels, and nonclaims.
+
+`CLAIMS_AND_VALIDATION.md` is the current evidence inventory. It names what the
+automated suite actually covers and what remains manual or unverified.
+
 ## Build
 
 The accepted build:
@@ -14,9 +25,13 @@ The accepted build:
 ## First viewport
 
 - The virtual slide is the dominant surface.
-- Entity tray, preset switcher, time controls, observation modes, measurements,
-  and model-status label are visible without obscuring the slide.
-- The model is labelled reduced-order in the first viewport.
+- On wide viewports, the entity tray and measurements are visible without
+  obscuring the slide.
+- On compact viewports, the core slide, model-status label, preset, time, and
+  observation controls remain visible; the tray and measurements are
+  immediately available through labelled drawer controls.
+- The model is labelled reduced-order in the first viewport at every supported
+  width.
 - A first-time visitor can place an entity without reading documentation.
 - The interface remains usable at 390 × 844 CSS pixels.
 
@@ -25,8 +40,9 @@ The accepted build:
 - Blank slide starts empty except for baseline fields.
 - Clicking or dragging a tray item onto the slide places the declared entity or
   field source.
-- Unsupported entity/model combinations produce a visible inert/unsupported
-  result.
+- Unsupported entity/model combinations remain visibly available but disabled
+  with an explicit explanation, and direct engine attempts return an
+  incompatible status.
 - Erase, reset, inspect, pause, and seed controls work with pointer, keyboard,
   and touch-equivalent input.
 - The cortical microcircuit is available as a preset.
@@ -82,4 +98,3 @@ The accepted build:
   for the pedagogical reduced-order model.
 - The page contains the governing equations, variable units, validity limits,
   and prohibited interpretations.
-

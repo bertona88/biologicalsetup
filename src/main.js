@@ -12,6 +12,12 @@ import {
   ENTITY_KIND,
   PRESETS,
 } from "./engine.js";
+import { shouldIgnoreGlobalShortcut } from "./input.js";
+import {
+  normalizeSeed,
+  parseRecipeState,
+  recipeSearchParams,
+} from "./recipe.js";
 import { SlideRenderer } from "./renderer.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -26,6 +32,7 @@ const dom = {
   slideTitle: $("#slide-title"),
   modelFamily: $("#model-family"),
   modelStatus: $("#model-status"),
+  chemistryLegend: $("#chemistry-legend"),
   modelSheet: $("#model-sheet"),
   modelSheetContent: $("#model-sheet-content"),
   closeModelSheet: $("#close-model-sheet"),
@@ -62,15 +69,13 @@ const dom = {
   progressMarker: $("#timeline-marker"),
   onboarding: $("#onboarding"),
   dismissOnboarding: $("#dismiss-onboarding"),
+  scaleBarLength: $("#scale-bar-length"),
   toast: $("#toast"),
 };
 
 const chart = new MetricChart(dom.chart);
-const urlState = new URLSearchParams(window.location.search);
-let preset = validPreset(Number(urlState.get("preset"))) ?? PRESETS.HOST_MICROBE;
-let seed = normalizeSeed(urlState.get("seed") ?? "164271829");
-let view = clamp(Number(urlState.get("view") ?? 0), 0, 2);
-let speed = Number(urlState.get("speed")) || PRESET_CATALOG[preset].defaultRate;
+const initialRecipe = parseRecipeState(window.location.search);
+let { preset, seed, view, speed } = initialRecipe;
 let activeTool = { type: "place", kind: ENTITY_KIND.BACTERIUM };
 let selectedId = 0;
 let paused = false;
@@ -83,8 +88,13 @@ let lastRenderTime = 0;
 let lastSampleTime = 0;
 let eventTotal = 0;
 let lastCounters = { divisions: 0, engulfments: 0, spikes: 0 };
+let lastAdvanceStatusCode = 0;
 let toastTimer;
 const keyboardCursor = { x: 200, y: 130 };
+const neuralEntityKinds = new Set([
+  ENTITY_KIND.NEURON_EXCITATORY,
+  ENTITY_KIND.NEURON_INHIBITORY,
+]);
 
 initialize().catch((error) => {
   console.error(error);
@@ -96,7 +106,9 @@ initialize().catch((error) => {
 
 async function initialize() {
   engine = await BiologicalEngine.load();
-  renderer = new SlideRenderer(dom.canvas);
+  renderer = new SlideRenderer(dom.canvas, ({ cssPixelsPerMicrometre }) => {
+    dom.scaleBarLength.style.width = `${50 * cssPixelsPerMicrometre}px`;
+  });
   bindInterface();
   resetWorld({ announce: false });
   setView(view);
@@ -124,7 +136,7 @@ function bindInterface() {
   $$(".entity-tool").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.getAttribute("aria-disabled") === "true") {
-        showToast("That entity has no interaction model in this specimen.");
+        reportUnsupportedEntity(button);
         return;
       }
       choosePlacement(Number(button.dataset.kind));
@@ -184,9 +196,13 @@ function bindInterface() {
   dom.stepOnce.addEventListener("click", () => {
     if (!paused) setPaused(true);
     const dt = preset === PRESETS.CORTICAL ? 0.001 : 0.05;
-    engine.advance(dt);
+    const warning = advanceSimulation(dt);
     renderNow();
-    announce(`Advanced one ${preset === PRESETS.CORTICAL ? "millisecond" : "model step"}.`);
+    if (!warning) {
+      announce(
+        `Advanced one ${preset === PRESETS.CORTICAL ? "millisecond" : "model step"}.`,
+      );
+    }
   });
   dom.speed.addEventListener("change", () => {
     speed = Number(dom.speed.value);
@@ -226,13 +242,30 @@ function animate(timestamp) {
   const elapsed = Math.min(0.1, Math.max(0, (timestamp - lastAnimationTime) / 1_000));
   lastAnimationTime = timestamp;
   if (!paused && document.visibilityState === "visible") {
-    engine.advance(elapsed * speed);
+    advanceSimulation(elapsed * speed);
   }
   if (timestamp - lastRenderTime >= 1000 / 30) {
     renderNow(timestamp);
     lastRenderTime = timestamp;
   }
   animationId = requestAnimationFrame(animate);
+}
+
+function advanceSimulation(elapsedSeconds) {
+  const performedSteps = engine.advance(elapsedSeconds);
+  const statusCode = engine.statusCode;
+  if (statusCode === 0) {
+    if (performedSteps > 0) lastAdvanceStatusCode = 0;
+    return false;
+  }
+  if (statusCode === lastAdvanceStatusCode) return true;
+
+  lastAdvanceStatusCode = statusCode;
+  const message = `Simulation warning: ${engine.status}.`;
+  addEvent(message);
+  showToast(message, 5_000);
+  announce(message);
+  return true;
 }
 
 function renderNow(timestamp = performance.now()) {
@@ -250,13 +283,14 @@ function renderNow(timestamp = performance.now()) {
 }
 
 function resetWorld({ announce: shouldAnnounce = true } = {}) {
-  seed = normalizeSeed(dom.seed.value || seed);
+  seed = normalizeSeed(seed);
   dom.seed.value = seed;
   dom.preset.value = String(preset);
   engine.reset(seed, preset);
   selectedId = 0;
   frame = engine.readFrame();
   lastCounters = { divisions: 0, engulfments: 0, spikes: 0 };
+  lastAdvanceStatusCode = 0;
   eventTotal = 0;
   dom.eventLog.replaceChildren();
   addEvent("Deterministic specimen initialized.");
@@ -306,6 +340,7 @@ function configurePresetInterface() {
     <span><i class="key-a"></i><b>${config.chart[0]}</b></span>
     <span><i class="key-b"></i><b>${config.chart[2]}</b></span>
   `;
+  configureEntityTools();
 
   const chemistryButton = $('.view-button[data-view="2"]');
   chemistryButton.disabled = preset === PRESETS.CORTICAL;
@@ -320,6 +355,43 @@ function configurePresetInterface() {
   } else {
     choosePlacement(ENTITY_KIND.BACTERIUM);
   }
+}
+
+function configureEntityTools() {
+  const neuralPreset = preset === PRESETS.CORTICAL;
+  $$(".entity-tool").forEach((button) => {
+    const kind = Number(button.dataset.kind);
+    const compatible = neuralEntityKinds.has(kind) === neuralPreset;
+    const description = button.querySelector("small");
+    if (!button.dataset.supportedDescription && description) {
+      button.dataset.supportedDescription = description.innerHTML;
+    }
+
+    button.setAttribute("aria-disabled", String(!compatible));
+    button.draggable = compatible;
+    if (compatible) {
+      if (description) description.innerHTML = button.dataset.supportedDescription;
+      button.removeAttribute("aria-label");
+      button.removeAttribute("title");
+      delete button.dataset.unsupportedMessage;
+      return;
+    }
+
+    const name = button.querySelector("strong")?.textContent ?? "Entity";
+    const message = `${name} is unsupported and inert in ${PRESET_CATALOG[preset].name}.`;
+    if (description) description.textContent = "Unsupported · inert in this chassis";
+    button.dataset.unsupportedMessage = message;
+    button.setAttribute("aria-label", message);
+    button.title = message;
+  });
+}
+
+function reportUnsupportedEntity(button) {
+  const message =
+    button.dataset.unsupportedMessage ??
+    "That entity is unsupported and inert in this specimen.";
+  showToast(message, 4_000);
+  announce(message);
 }
 
 function configureMetric(labelElement, unitElement, definition) {
@@ -530,6 +602,8 @@ function actOnSlide(point) {
 
 function setView(nextView) {
   view = nextView;
+  dom.app.dataset.view = String(view);
+  dom.chemistryLegend.hidden = view !== 2;
   $$(".view-button").forEach((button) => {
     const active = Number(button.dataset.view) === view;
     button.classList.toggle("active", active);
@@ -625,11 +699,7 @@ function closeModelSheet() {
 
 function shareRecipe() {
   const url = new URL(window.location.href);
-  url.search = "";
-  url.searchParams.set("preset", String(preset));
-  url.searchParams.set("seed", seed);
-  url.searchParams.set("view", String(view));
-  url.searchParams.set("speed", String(speed));
+  url.search = recipeSearchParams({ preset, seed, view, speed }).toString();
   navigator.clipboard
     .writeText(url.toString())
     .then(() => {
@@ -644,9 +714,12 @@ function shareRecipe() {
 function handleKeyboard(event) {
   const target = event.target;
   if (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLSelectElement ||
-    target instanceof HTMLTextAreaElement
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    shouldIgnoreGlobalShortcut(target, dom.canvas)
   ) {
     return;
   }
@@ -685,7 +758,13 @@ function handleKeyboard(event) {
   };
   if (shortcuts[key]) {
     const button = $(`.entity-tool[data-kind="${shortcuts[key]}"]`);
-    if (button && button.offsetParent !== null) choosePlacement(shortcuts[key]);
+    if (button && button.offsetParent !== null) {
+      if (button.getAttribute("aria-disabled") === "true") {
+        reportUnsupportedEntity(button);
+      } else {
+        choosePlacement(shortcuts[key]);
+      }
+    }
     return;
   }
 
@@ -765,18 +844,6 @@ function formatState(value) {
   return value.toFixed(3);
 }
 
-function normalizeSeed(value) {
-  try {
-    return BigInt.asUintN(64, BigInt(String(value).replace(/[^\d]/g, "") || "1")).toString();
-  } catch {
-    return "164271829";
-  }
-}
-
-function validPreset(value) {
-  return Object.hasOwn(PRESET_CATALOG, value) ? value : undefined;
-}
-
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
 }
@@ -784,4 +851,3 @@ function clamp(value, minimum, maximum) {
 window.addEventListener("beforeunload", () => {
   if (animationId) cancelAnimationFrame(animationId);
 });
-

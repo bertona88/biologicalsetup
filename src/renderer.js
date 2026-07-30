@@ -36,8 +36,20 @@ void main() {
   } else {
     vec3 glucose = vec3(0.12, 0.32, 0.72) * values.r;
     vec3 cue = vec3(0.94, 0.43, 0.08) * values.g;
-    float contours = smoothstep(0.47, 0.5, abs(fract((values.r + values.g) * 8.0) - 0.5));
-    color = vec3(0.012, 0.028, 0.032) + glucose + cue + contours * 0.025;
+    float glucosePresence = smoothstep(0.03, 0.16, values.r);
+    float glucoseContourDistance = abs(fract(values.r * 8.0) - 0.5);
+    float glucoseContours =
+      (1.0 - smoothstep(0.025, 0.07, glucoseContourDistance)) * glucosePresence;
+    vec2 cueCell = fract(v_uv * vec2(40.0, 26.0)) - 0.5;
+    float cueDots =
+      (1.0 - smoothstep(0.10, 0.20, length(cueCell))) *
+      smoothstep(0.03, 0.16, values.g);
+    color =
+      vec3(0.012, 0.028, 0.032) +
+      glucose +
+      cue +
+      vec3(0.16) * glucoseContours +
+      vec3(0.24) * cueDots;
   }
   out_color = vec4(max(color * illumination, 0.0), 1.0);
 }`;
@@ -161,9 +173,16 @@ void main() {
   out_color = vec4(v_sign < 0.0 ? inhibitory : excitatory, u_view == 1 ? 0.21 : 0.11);
 }`;
 
+export function specimenCssPixelsPerMicrometre(width, height) {
+  const safeWidth = Number.isFinite(width) ? Math.max(0, width) : 0;
+  const safeHeight = Number.isFinite(height) ? Math.max(0, height) : 0;
+  return Math.min(safeWidth / SLIDE_WIDTH, safeHeight / SLIDE_HEIGHT);
+}
+
 export class SlideRenderer {
-  constructor(canvas) {
+  constructor(canvas, onGeometryChange = () => {}) {
     this.canvas = canvas;
+    this.onGeometryChange = onGeometryChange;
     this.gl = canvas.getContext("webgl2", {
       alpha: false,
       antialias: true,
@@ -241,6 +260,12 @@ export class SlideRenderer {
       screenAspect > worldAspect
         ? [worldAspect / screenAspect, 1]
         : [1, screenAspect / worldAspect];
+    this.onGeometryChange({
+      cssPixelsPerMicrometre: specimenCssPixelsPerMicrometre(
+        rect.width,
+        rect.height,
+      ),
+    });
   }
 
   worldCoordinates(clientX, clientY) {
@@ -399,4 +424,3 @@ function createShader(gl, type, source) {
   }
   return shader;
 }
-

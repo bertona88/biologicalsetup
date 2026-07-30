@@ -136,11 +136,10 @@ pub extern "C" fn world_connections_ptr() -> *const f32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn world_state_hash_low() -> u32 {
-    WORLD.with_borrow_mut(|world| world.state_hash() as u32)
+    WORLD.with_borrow(|world| world.state_hash() as u32)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn world_state_hash_high() -> u32 {
-    WORLD.with_borrow_mut(|world| (world.state_hash() >> 32) as u32)
+    WORLD.with_borrow(|world| (world.state_hash() >> 32) as u32)
 }
-

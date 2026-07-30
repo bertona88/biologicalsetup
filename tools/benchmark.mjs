@@ -10,62 +10,193 @@ async function engine() {
 }
 
 function reset(exports, seed, preset) {
-  exports.world_reset(seed >>> 0, 0, preset);
+  if (exports.world_reset(seed >>> 0, 0, preset) !== 1) {
+    throw new Error(`Could not reset preset ${preset}`);
+  }
 }
 
-async function benchmarkCulture() {
+function round(value, digits = 1) {
+  return Number(value.toFixed(digits));
+}
+
+function commonResult(exports, scenario, elapsedMilliseconds) {
+  return {
+    scenario,
+    entities: exports.world_entity_count(),
+    elapsedMilliseconds: round(elapsedMilliseconds, 2),
+    wasmMemoryBytes: exports.memory.buffer.byteLength,
+  };
+}
+
+async function benchmarkStepping({
+  scenario,
+  preset,
+  requestedSeconds,
+  iterations,
+  setup,
+}) {
   const exports = await engine();
-  reset(exports, 424242, 0);
+  reset(exports, 424242, preset);
+  if (setup) setup(exports);
+
+  // One unmeasured call pays initialization and JIT costs before sampling.
+  exports.world_advance(requestedSeconds);
+  let performedSteps = 0;
+  const start = performance.now();
+  for (let index = 0; index < iterations; index += 1) {
+    performedSteps += exports.world_advance(requestedSeconds);
+  }
+  const elapsedMilliseconds = performance.now() - start;
+
+  return {
+    ...commonResult(exports, scenario, elapsedMilliseconds),
+    iterations,
+    performedSteps,
+    simulatedSeconds: round(requestedSeconds * iterations, 3),
+    simulationStepsPerWallSecond: round(
+      (performedSteps * 1_000) / elapsedMilliseconds,
+    ),
+    simulatedSecondsPerWallSecond: round(
+      (requestedSeconds * iterations * 1_000) / elapsedMilliseconds,
+    ),
+  };
+}
+
+function placeCrowdedCulture(exports) {
   for (let index = 0; index < 2_000; index += 1) {
     const x = 4 + ((index * 37) % 392);
     const y = 4 + ((index * 61) % 252);
-    exports.world_place(1, x, y, 1);
+    const id = exports.world_place(1, x, y, 1);
+    if (id === 0 || exports.world_last_status() !== 0) {
+      throw new Error(`Could not place benchmark bacterium ${index + 1}`);
+    }
   }
-  exports.world_advance(0.5);
-  const start = performance.now();
-  const iterations = 30;
-  for (let index = 0; index < iterations; index += 1) {
-    exports.world_advance(0.5);
-    exports.world_prepare_snapshot();
-  }
-  const elapsed = performance.now() - start;
-  return {
-    scenario: "2,000 motile bacteria + two 64x42 fields",
-    entities: exports.world_entity_count(),
-    simulatedSeconds: iterations * 0.5,
-    elapsedMilliseconds: Number(elapsed.toFixed(2)),
-    simulatedSecondsPerWallSecond: Number(
-      ((iterations * 0.5 * 1_000) / elapsed).toFixed(1),
+}
+
+function copySnapshot(exports) {
+  exports.world_prepare_snapshot();
+  const memory = exports.memory.buffer;
+  const entityFloats =
+    exports.world_entity_count() * exports.world_entity_stride_f32();
+  const fieldFloats =
+    exports.world_field_width() * exports.world_field_height();
+  const connectionFloats = exports.world_connection_count() * 4;
+
+  const entities = Float32Array.from(
+    new Float32Array(
+      memory,
+      exports.world_entities_ptr(),
+      entityFloats,
     ),
-    wasmBytes: bytes.byteLength,
-    memoryBytes: exports.memory.buffer.byteLength,
+  );
+  const metrics = Float32Array.from(
+    new Float32Array(
+      memory,
+      exports.world_metrics_ptr(),
+      exports.world_metrics_len(),
+    ),
+  );
+  const glucose = Float32Array.from(
+    new Float32Array(memory, exports.world_field_ptr(0), fieldFloats),
+  );
+  const cue = Float32Array.from(
+    new Float32Array(memory, exports.world_field_ptr(1), fieldFloats),
+  );
+  const connections = Float32Array.from(
+    new Float32Array(
+      memory,
+      exports.world_connections_ptr(),
+      connectionFloats,
+    ),
+  );
+
+  return {
+    bytesCopied:
+      (entities.length +
+        metrics.length +
+        glucose.length +
+        cue.length +
+        connections.length) *
+      Float32Array.BYTES_PER_ELEMENT,
+    // Consume one value so the copies remain observably used.
+    checksum:
+      (entities.at(-1) ?? 0) +
+      (metrics.at(-1) ?? 0) +
+      (glucose.at(-1) ?? 0) +
+      (cue.at(-1) ?? 0) +
+      (connections.at(-1) ?? 0),
   };
 }
 
-async function benchmarkNeural() {
+async function benchmarkSnapshotExport() {
   const exports = await engine();
-  reset(exports, 424242, 3);
-  exports.world_advance(0.05);
+  reset(exports, 424242, 0);
+  placeCrowdedCulture(exports);
+  exports.world_advance(0.5);
+
+  const warmup = copySnapshot(exports);
+  const iterations = 250;
+  let checksum = warmup.checksum;
   const start = performance.now();
-  const iterations = 40;
   for (let index = 0; index < iterations; index += 1) {
-    exports.world_advance(0.05);
-    exports.world_prepare_snapshot();
+    checksum += copySnapshot(exports).checksum;
   }
-  const elapsed = performance.now() - start;
+  const elapsedMilliseconds = performance.now() - start;
+
   return {
-    scenario: "40-neuron conductance network at 1 ms",
-    entities: exports.world_entity_count(),
-    simulatedSeconds: iterations * 0.05,
-    elapsedMilliseconds: Number(elapsed.toFixed(2)),
-    simulatedSecondsPerWallSecond: Number(
-      ((iterations * 0.05 * 1_000) / elapsed).toFixed(1),
+    ...commonResult(
+      exports,
+      "2,000-agent full snapshot preparation and JavaScript copy",
+      elapsedMilliseconds,
     ),
-    wasmBytes: bytes.byteLength,
-    memoryBytes: exports.memory.buffer.byteLength,
+    iterations,
+    bytesCopiedPerSnapshot: warmup.bytesCopied,
+    snapshotsPerWallSecond: round(
+      (iterations * 1_000) / elapsedMilliseconds,
+    ),
+    checksum: round(checksum, 3),
   };
 }
 
-console.log(JSON.stringify(await benchmarkCulture(), null, 2));
-console.log(JSON.stringify(await benchmarkNeural(), null, 2));
+const scenarios = [
+  await benchmarkStepping({
+    scenario: "default host–microbe preset stepping",
+    preset: 1,
+    requestedSeconds: 0.5,
+    iterations: 40,
+  }),
+  await benchmarkStepping({
+    scenario: "2,000 motile bacteria plus two 64×42 fields",
+    preset: 0,
+    requestedSeconds: 0.5,
+    iterations: 30,
+    setup: placeCrowdedCulture,
+  }),
+  await benchmarkStepping({
+    scenario: "40-neuron conductance network at 1 ms",
+    preset: 3,
+    requestedSeconds: 0.05,
+    iterations: 40,
+  }),
+  await benchmarkSnapshotExport(),
+];
 
+console.log(
+  JSON.stringify(
+    {
+      benchmark: "BiologicalSetup local profiling scenarios",
+      gating: false,
+      note:
+        "Wall-time results vary by runtime and device. These measurements have no pass/fail threshold and are not release evidence.",
+      runtime: {
+        node: process.version,
+        platform: process.platform,
+        architecture: process.arch,
+      },
+      wasmBytes: bytes.byteLength,
+      scenarios,
+    },
+    null,
+    2,
+  ),
+);

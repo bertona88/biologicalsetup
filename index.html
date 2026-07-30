@@ -28,7 +28,7 @@
         <div class="preset-switcher" aria-label="Specimen presets">
           <span class="control-label">Specimen</span>
           <select id="preset-select" aria-label="Select specimen preset">
-            <option value="1">Host–microbe frontier</option>
+            <option value="1" selected>Host–microbe frontier</option>
             <option value="2">Phagocyte pursuit</option>
             <option value="0">Blank culture slide</option>
             <option value="3">Cortical microcircuit</option>
@@ -95,6 +95,22 @@
               <span class="view-glyph field-glyph" aria-hidden="true"></span>
               Chemistry
             </button>
+          </div>
+
+          <div
+            class="chemistry-legend"
+            id="chemistry-legend"
+            aria-label="Chemistry view pattern legend"
+            hidden
+          >
+            <span class="chemistry-key">
+              <i class="chemistry-pattern glucose-pattern" aria-hidden="true"></i>
+              <span><strong>Glucose</strong><small>solid contours · mM</small></span>
+            </span>
+            <span class="chemistry-key">
+              <i class="chemistry-pattern cue-pattern" aria-hidden="true"></i>
+              <span><strong>Cue</strong><small>dotted field · nM-eq</small></span>
+            </span>
           </div>
 
           <aside class="entity-tray surface" id="entity-tray" aria-label="Entity tray">
@@ -256,7 +272,7 @@
           <div class="cursor-readout" id="cursor-readout" aria-hidden="true">x 000 · y 000 µm</div>
 
           <div class="scale-bar" aria-label="Scale bar 50 micrometres">
-            <span></span><small>50 µm</small>
+            <span id="scale-bar-length"></span><small>50 µm</small>
           </div>
 
           <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -309,4 +325,3 @@
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
-

@@ -3,7 +3,7 @@ use std::f32::consts::{PI, TAU};
 use crate::{
     MAX_ENTITIES, SLIDE_HEIGHT_UM, SLIDE_WIDTH_UM,
     entities::{Entities, EntityKind},
-    field::{CUE, Fields, GLUCOSE},
+    field::{CUE, FIELD_LEN, Fields, GLUCOSE},
     rng::Rng,
     spatial::SpatialBins,
 };
@@ -23,7 +23,9 @@ const CUE_SECRETION_NM_EQ_S: f32 = 0.02;
 const PHAGOCYTE_SPEED_UM_S: f32 = 0.20;
 const PHAGOCYTE_CAPACITY: f32 = 6.0;
 const ENGULFMENT_SECONDS: f32 = 15.0;
+const DIGESTION_SECONDS: f32 = 120.0;
 const MAX_NEURAL_EVENTS: usize = 4_096;
+const DIVISION_THRESHOLD_EPSILON_PG: f32 = 1.0e-6;
 
 pub const STATUS_OK: u32 = 0;
 pub const STATUS_INVALID: u32 = 1;
@@ -78,6 +80,22 @@ struct SynapticEvent {
     delivery_seconds: f32,
     target: u32,
     conductance_ns: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct UptakeRequest {
+    entity_index: usize,
+    field_cell: usize,
+    desired_millimolar: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DivisionChild {
+    parent_id: u32,
+    x: f32,
+    y: f32,
+    angle: f32,
+    biomass_pg: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -251,7 +269,7 @@ impl World {
         self.entities.a[index] = self.rng.range(0.30, 0.56);
         self.entities.b[index] = glucose;
         self.entities.c[index] = glucose;
-        self.entities.e[index] = 0.60;
+        self.entities.e[index] = self.rng.range(0.56, 0.64);
         Some(id)
     }
 
@@ -422,10 +440,14 @@ impl World {
     }
 
     fn step_microbe(&mut self, dt: f32) {
+        // The model contract defines transport before entity rules at the same
+        // simulation time. Sources queued by actions or the preceding entity
+        // step are therefore transported before any entity samples a field.
+        self.fields.step(dt);
         self.spatial.rebuild(&self.entities);
         self.pending_remove.clear();
         let initial_len = self.entities.len();
-        let mut children = Vec::new();
+        let mut uptake_requests = Vec::new();
         let mut claimed = Vec::<u32>::new();
         let captured = (0..initial_len)
             .filter(|index| self.entities.kinds[*index] == EntityKind::Phagocyte)
@@ -436,7 +458,7 @@ impl World {
         for index in 0..initial_len {
             match self.entities.kinds[index] {
                 EntityKind::Bacterium => {
-                    self.step_bacterium(index, dt, &captured, &mut children)
+                    self.step_bacterium(index, dt, &captured, &mut uptake_requests)
                 }
                 EntityKind::Phagocyte => {
                     self.step_phagocyte(index, dt, &mut claimed);
@@ -446,16 +468,33 @@ impl World {
             }
         }
 
-        self.entities.remove_indices(&mut self.pending_remove);
-        for (x, y, angle, biomass) in children {
-            if let Some(id) = self.spawn_bacterium(x, y)
-                && let Some(index) = self.entities.index_of(id)
-            {
-                self.entities.angle[index] = angle;
-                self.entities.a[index] = biomass;
+        let mut removed = vec![false; initial_len];
+        for index in self.pending_remove.iter().copied() {
+            if index < initial_len {
+                removed[index] = true;
             }
         }
-        self.fields.step(dt);
+        let children =
+            self.resolve_bacterial_uptake_and_division(&uptake_requests, &removed, dt);
+
+        self.entities.remove_indices(&mut self.pending_remove);
+        for child in children {
+            if let Some(id) = self.spawn_bacterium(child.x, child.y)
+                && let Some(index) = self.entities.index_of(id)
+            {
+                self.entities.angle[index] = child.angle;
+                self.entities.a[index] = child.biomass_pg;
+                self.counters.divisions = self.counters.divisions.saturating_add(1);
+            } else {
+                // Slot reservation should make this branch unreachable. Restore
+                // the parent if storage nevertheless rejects the child so a
+                // capacity failure cannot silently destroy biomass.
+                if let Some(parent_index) = self.entities.index_of(child.parent_id) {
+                    self.entities.a[parent_index] += child.biomass_pg;
+                }
+                self.last_status = STATUS_CAPACITY;
+            }
+        }
         self.time_seconds += dt;
     }
 
@@ -464,7 +503,7 @@ impl World {
         index: usize,
         dt: f32,
         captured: &[u32],
-        children: &mut Vec<(f32, f32, f32, f32)>,
+        uptake_requests: &mut Vec<UptakeRequest>,
     ) {
         let x = self.entities.x[index];
         let y = self.entities.y[index];
@@ -501,37 +540,148 @@ impl World {
         }
 
         let saturation = glucose / (BACTERIAL_KS_MM + glucose.max(0.0));
-        let desired_growth = self.entities.a[index] * BACTERIAL_MU_MAX_PER_S * saturation * dt;
+        let biomass_room = (self.entities.e[index] - self.entities.a[index]).max(0.0);
+        let desired_growth = (self.entities.a[index]
+            * BACTERIAL_MU_MAX_PER_S
+            * saturation
+            * dt)
+            .min(biomass_room);
         let glucose_pg_per_mm =
             Fields::voxel_volume_liters() * 1.0e-3 * GLUCOSE_MOLAR_MASS_G_MOL * 1.0e12;
         let desired_glucose_mm = desired_growth / BIOMASS_YIELD_G_G / glucose_pg_per_mm;
-        let consumed_mm = desired_glucose_mm.min(glucose);
-        let actual_growth = consumed_mm * glucose_pg_per_mm * BIOMASS_YIELD_G_G;
-        self.entities.a[index] += actual_growth;
-        self.entities.d[index] = BACTERIAL_MU_MAX_PER_S * saturation * 3_600.0;
-        self.fields.add_local(GLUCOSE, x, y, -consumed_mm);
+        self.entities.d[index] = 0.0;
+        if desired_glucose_mm > 0.0 {
+            uptake_requests.push(UptakeRequest {
+                entity_index: index,
+                field_cell: Fields::cell_at(x, y),
+                desired_millimolar: desired_glucose_mm,
+            });
+        }
         self.fields
             .add_local(CUE, x, y, CUE_SECRETION_NM_EQ_S * dt);
+    }
 
-        if self.entities.a[index] >= self.entities.e[index]
-            && self.entities.len() + children.len() < MAX_ENTITIES
-        {
+    fn resolve_bacterial_uptake_and_division(
+        &mut self,
+        requests: &[UptakeRequest],
+        removed: &[bool],
+        dt: f32,
+    ) -> Vec<DivisionChild> {
+        let mut remaining_demand = vec![0.0_f32; FIELD_LEN];
+        for request in requests {
+            if !removed[request.entity_index] {
+                remaining_demand[request.field_cell] += request.desired_millimolar;
+            }
+        }
+
+        let mut remaining_consumption = vec![0.0_f32; FIELD_LEN];
+        for cell in 0..FIELD_LEN {
+            remaining_consumption[cell] =
+                self.fields
+                    .consume_cell(GLUCOSE, cell, remaining_demand[cell]);
+        }
+
+        let glucose_pg_per_mm =
+            Fields::voxel_volume_liters() * 1.0e-3 * GLUCOSE_MOLAR_MASS_G_MOL * 1.0e12;
+        for request in requests {
+            if removed[request.entity_index] {
+                continue;
+            }
+            let cell = request.field_cell;
+            let demand = remaining_demand[cell];
+            let consumed = remaining_consumption[cell];
+            let allocated = if request.desired_millimolar >= demand {
+                consumed
+            } else if demand > 0.0 {
+                consumed * request.desired_millimolar / demand
+            } else {
+                0.0
+            }
+            .min(request.desired_millimolar);
+            remaining_demand[cell] = (demand - request.desired_millimolar).max(0.0);
+            remaining_consumption[cell] = (consumed - allocated).max(0.0);
+
+            let index = request.entity_index;
+            let biomass_before = self.entities.a[index];
+            let actual_growth = allocated * glucose_pg_per_mm * BIOMASS_YIELD_G_G;
+            self.entities.a[index] =
+                (biomass_before + actual_growth).min(self.entities.e[index]);
+            let realized_growth = self.entities.a[index] - biomass_before;
+            if biomass_before > 0.0 && dt > 0.0 {
+                self.entities.d[index] = realized_growth / biomass_before / dt * 3_600.0;
+            }
+        }
+
+        let removed_count = removed.iter().filter(|removed| **removed).count();
+        let survivor_count = self.entities.len().saturating_sub(removed_count);
+        let mut available_slots = self.entities.capacity().saturating_sub(survivor_count);
+        let mut children = Vec::with_capacity(available_slots.min(64));
+
+        for index in 0..self.entities.len() {
+            if removed[index] || self.entities.kinds[index] != EntityKind::Bacterium {
+                continue;
+            }
+            let threshold = self.entities.e[index];
+            let threshold_reached = self.entities.a[index] >= threshold
+                || threshold - self.entities.a[index] <= DIVISION_THRESHOLD_EPSILON_PG;
+            if !threshold_reached {
+                continue;
+            }
+
+            if available_slots == 0 {
+                // A saturated bacterium stays at its finite division threshold
+                // and stops requesting substrate until a slot is available.
+                self.last_status = STATUS_CAPACITY;
+                continue;
+            }
+
             let child_biomass = self.entities.a[index] * 0.5;
             self.entities.a[index] = child_biomass;
             let child_angle = (self.entities.angle[index] + PI).rem_euclid(TAU);
-            children.push((
-                (self.entities.x[index] + child_angle.cos() * 2.4)
+            children.push(DivisionChild {
+                parent_id: self.entities.ids[index],
+                x: (self.entities.x[index] + child_angle.cos() * 2.4)
                     .clamp(2.0, SLIDE_WIDTH_UM - 2.0),
-                (self.entities.y[index] + child_angle.sin() * 2.4)
+                y: (self.entities.y[index] + child_angle.sin() * 2.4)
                     .clamp(2.0, SLIDE_HEIGHT_UM - 2.0),
-                child_angle,
-                child_biomass,
-            ));
-            self.counters.divisions = self.counters.divisions.saturating_add(1);
+                angle: child_angle,
+                biomass_pg: child_biomass,
+            });
+            available_slots -= 1;
+        }
+
+        children
+    }
+
+    fn advance_phagocyte_digestion(&mut self, index: usize, dt: f32) {
+        if self.entities.a[index] <= 0.0 {
+            self.entities.a[index] = 0.0;
+            self.entities.d[index] = 0.0;
+            return;
+        }
+        if self.entities.d[index] <= 0.0 {
+            self.entities.d[index] = DIGESTION_SECONDS;
+        }
+
+        let mut remaining_dt = dt.max(0.0);
+        while remaining_dt >= self.entities.d[index] && self.entities.a[index] > 0.0 {
+            remaining_dt -= self.entities.d[index];
+            self.entities.a[index] = (self.entities.a[index] - 1.0).max(0.0);
+            self.entities.d[index] = if self.entities.a[index] > 0.0 {
+                DIGESTION_SECONDS
+            } else {
+                0.0
+            };
+        }
+        if self.entities.a[index] > 0.0 {
+            self.entities.d[index] = (self.entities.d[index] - remaining_dt).max(0.0);
         }
     }
 
     fn step_phagocyte(&mut self, index: usize, dt: f32, claimed: &mut Vec<u32>) {
+        // Digestion precedes the capacity decision so a completed cargo item
+        // can free a slot for a new contact in the same entity step.
+        self.advance_phagocyte_digestion(index, dt);
         let x = self.entities.x[index];
         let y = self.entities.y[index];
         let (gx, gy) = self.fields.gradient(CUE, x, y);
@@ -573,9 +723,13 @@ impl World {
             if self.entities.b[index] >= 1.0 {
                 claimed.push(target_id);
                 self.pending_remove.push(target_index);
-                self.entities.a[index] += 1.0;
+                let cargo_before = self.entities.a[index];
+                self.entities.a[index] =
+                    (cargo_before + 1.0).min(PHAGOCYTE_CAPACITY);
                 self.entities.b[index] = 0.0;
-                self.entities.d[index] = 120.0;
+                if cargo_before <= 0.0 {
+                    self.entities.d[index] = DIGESTION_SECONDS;
+                }
                 self.entities.target[index] = 0;
                 self.counters.engulfments = self.counters.engulfments.saturating_add(1);
             }
@@ -593,10 +747,6 @@ impl World {
             self.entities.angle[index] =
                 turn_toward(self.entities.angle[index], desired, turn)
                     + self.rng.signed() * 0.12 * dt.sqrt();
-        }
-
-        if self.entities.d[index] > 0.0 {
-            self.entities.d[index] = (self.entities.d[index] - dt).max(0.0);
         }
 
         let speed = if self.entities.target[index] == 0 {
@@ -865,21 +1015,67 @@ impl World {
         }
     }
 
-    pub fn state_hash(&mut self) -> u64 {
-        self.prepare_snapshot();
+    pub fn state_hash(&self) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-        hash ^= self.seed;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-        for value in &self.snapshot {
-            hash ^= value.to_bits() as u64;
-            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        hash_word(&mut hash, self.preset as u32 as u64);
+        hash_word(&mut hash, self.seed);
+        hash_word(&mut hash, self.time_seconds.to_bits() as u64);
+        hash_word(&mut hash, self.accumulator_seconds.to_bits() as u64);
+        hash_word(&mut hash, self.rng.state_word());
+        hash_word(&mut hash, self.last_status as u64);
+        hash_word(&mut hash, self.counters.divisions as u64);
+        hash_word(&mut hash, self.counters.engulfments as u64);
+        hash_word(&mut hash, self.counters.spikes as u64);
+        hash_word(&mut hash, self.counters.slow_frames as u64);
+
+        hash_word(&mut hash, self.entities.capacity() as u64);
+        hash_word(&mut hash, self.entities.next_id() as u64);
+        hash_word(&mut hash, self.entities.len() as u64);
+        for index in 0..self.entities.len() {
+            hash_word(&mut hash, self.entities.ids[index] as u64);
+            hash_word(&mut hash, self.entities.kinds[index] as u8 as u64);
+            hash_word(&mut hash, self.entities.x[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.y[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.angle[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.radius[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.a[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.b[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.c[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.d[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.e[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.f[index].to_bits() as u64);
+            hash_word(&mut hash, self.entities.target[index] as u64);
         }
+
+        hash_word(&mut hash, self.fields.values.len() as u64);
         for value in &self.fields.values {
-            hash ^= value.to_bits() as u64;
-            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            hash_word(&mut hash, value.to_bits() as u64);
+        }
+        for value in self.fields.pending_sources() {
+            hash_word(&mut hash, value.to_bits() as u64);
+        }
+
+        hash_word(&mut hash, self.connections.len() as u64);
+        for connection in &self.connections {
+            hash_word(&mut hash, connection.source as u64);
+            hash_word(&mut hash, connection.target as u64);
+            hash_word(&mut hash, connection.conductance_ns.to_bits() as u64);
+            hash_word(&mut hash, connection.delay_seconds.to_bits() as u64);
+        }
+
+        hash_word(&mut hash, self.events.len() as u64);
+        for event in &self.events {
+            hash_word(&mut hash, event.delivery_seconds.to_bits() as u64);
+            hash_word(&mut hash, event.target as u64);
+            hash_word(&mut hash, event.conductance_ns.to_bits() as u64);
         }
         hash
     }
+}
+
+fn hash_word(hash: &mut u64, word: u64) {
+    *hash ^= word;
+    *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
 }
 
 fn turn_toward(current: f32, target: f32, fraction: f32) -> f32 {
@@ -906,11 +1102,35 @@ fn reflect(
 
 #[cfg(test)]
 mod tests {
-    use super::{Preset, STATUS_INCOMPATIBLE, World};
-    use crate::{
-        entities::EntityKind,
-        field::{CUE, GLUCOSE},
+    use super::{
+        BIOMASS_YIELD_G_G, Connection, DIGESTION_SECONDS, ENGULFMENT_SECONDS,
+        GLUCOSE_MOLAR_MASS_G_MOL, MAX_NEURAL_EVENTS, MICROBE_DT_SECONDS,
+        NEURAL_DT_SECONDS, PHAGOCYTE_CAPACITY, Preset, STATUS_CAPACITY,
+        STATUS_INCOMPATIBLE, SynapticEvent, World,
     };
+    use crate::{
+        entities::{Entities, EntityKind},
+        field::{CUE, FIELD_HEIGHT, FIELD_WIDTH, Fields, GLUCOSE},
+    };
+
+    fn total_bacterial_biomass(world: &World) -> f64 {
+        (0..world.entities.len())
+            .filter(|index| world.entities.kinds[*index] == EntityKind::Bacterium)
+            .map(|index| f64::from(world.entities.a[index]))
+            .sum()
+    }
+
+    fn glucose_mass_pg(world: &World) -> f64 {
+        let concentration_sum = world.fields.values[..super::FIELD_LEN]
+            .iter()
+            .map(|value| f64::from(*value))
+            .sum::<f64>();
+        concentration_sum
+            * f64::from(Fields::voxel_volume_liters())
+            * 1.0e-3
+            * f64::from(GLUCOSE_MOLAR_MASS_G_MOL)
+            * 1.0e12
+    }
 
     #[test]
     fn same_seed_and_steps_are_deterministic() {
@@ -947,6 +1167,114 @@ mod tests {
     }
 
     #[test]
+    fn crowded_uptake_preserves_declared_biomass_yield() {
+        let mut world = World::new(101, Preset::Blank);
+        world.fields.values.fill(0.0);
+        let ix = FIELD_WIDTH / 2;
+        let iy = FIELD_HEIGHT / 2;
+        let x = (ix as f32 + 0.5) * Fields::dx_um();
+        let y = (iy as f32 + 0.5) * Fields::dy_um();
+        for _ in 0..1_024 {
+            assert_ne!(
+                world.place_entity(EntityKind::Bacterium, x, y),
+                0,
+                "crowding fixture unexpectedly reached entity capacity"
+            );
+        }
+        world.fields.set_cell(GLUCOSE, ix, iy, 0.01);
+
+        let biomass_before = total_bacterial_biomass(&world);
+        let glucose_before = glucose_mass_pg(&world);
+        world.advance(MICROBE_DT_SECONDS);
+        let biomass_gain = total_bacterial_biomass(&world) - biomass_before;
+        let glucose_consumed = glucose_before - glucose_mass_pg(&world);
+        let apparent_yield = biomass_gain / glucose_consumed;
+
+        assert!(biomass_gain > 0.0);
+        assert!(glucose_consumed > 0.0);
+        assert!(
+            (apparent_yield - f64::from(BIOMASS_YIELD_G_G)).abs() < 5.0e-3,
+            "apparent yield {apparent_yield} did not match declared yield {}",
+            BIOMASS_YIELD_G_G
+        );
+        assert!(
+            world.fields.sample(GLUCOSE, x, y) <= f32::EPSILON,
+            "fixture did not oversubscribe the shared glucose voxel"
+        );
+    }
+
+    #[test]
+    fn field_transport_precedes_bacterial_rules() {
+        let mut world = World::new(102, Preset::Blank);
+        world.fields.values.fill(0.0);
+        let ix = FIELD_WIDTH / 2;
+        let iy = FIELD_HEIGHT / 2;
+        let x = (ix as f32 + 0.5) * Fields::dx_um();
+        let y = (iy as f32 + 0.5) * Fields::dy_um();
+        let id = world.place_entity(EntityKind::Bacterium, x, y);
+        let index = world.entities.index_of(id).unwrap();
+        let biomass_before = world.entities.a[index];
+        world.fields.set_cell(GLUCOSE, ix + 1, iy, 1.0);
+
+        world.advance(MICROBE_DT_SECONDS);
+
+        let index = world.entities.index_of(id).unwrap();
+        assert!(
+            world.entities.a[index] > biomass_before,
+            "bacterium did not observe glucose diffused into its voxel this step"
+        );
+    }
+
+    #[test]
+    fn division_conserves_biomass() {
+        let mut world = World::new(103, Preset::Blank);
+        world.fields.values.fill(0.0);
+        let id = world.place_entity(EntityKind::Bacterium, 200.0, 130.0);
+        let index = world.entities.index_of(id).unwrap();
+        world.entities.a[index] = world.entities.e[index];
+        let biomass_before = total_bacterial_biomass(&world);
+
+        world.advance(MICROBE_DT_SECONDS);
+
+        assert_eq!(world.entities.len(), 2);
+        assert_eq!(world.counters.divisions, 1);
+        let error = (total_bacterial_biomass(&world) - biomass_before).abs();
+        assert!(error < 1.0e-7, "division changed biomass by {error} pg");
+    }
+
+    #[test]
+    fn capacity_failure_is_explicit_and_biomass_stays_bounded() {
+        let mut world = World::new(104, Preset::Blank);
+        world.entities = Entities::new(2);
+        world.fields.values.fill(2.0);
+        let bacterium = world.spawn_bacterium(200.0, 130.0).unwrap();
+        let filler = world.spawn_bacterium(20.0, 20.0).unwrap();
+        let index = world.entities.index_of(bacterium).unwrap();
+        world.entities.e[index] = 0.6;
+        world.entities.a[index] = 0.6 - 1.0e-5;
+        let filler_index = world.entities.index_of(filler).unwrap();
+        world.entities.a[filler_index] = 0.0;
+        world.entities.e[filler_index] = 1.0;
+
+        world.advance(MICROBE_DT_SECONDS);
+        let index = world.entities.index_of(bacterium).unwrap();
+        let saturated_biomass = world.entities.a[index];
+        assert_eq!(world.last_status, STATUS_CAPACITY);
+        assert!(saturated_biomass <= world.entities.e[index]);
+        assert_eq!(
+            world.place_entity(EntityKind::Bacterium, 100.0, 100.0),
+            0
+        );
+        assert_eq!(world.last_status, STATUS_CAPACITY);
+
+        world.advance(2.0);
+        let index = world.entities.index_of(bacterium).unwrap();
+        assert_eq!(world.last_status, STATUS_CAPACITY);
+        assert_eq!(world.entities.a[index], saturated_biomass);
+        assert_eq!(world.entities.len(), world.entities.capacity());
+    }
+
+    #[test]
     fn engulfment_is_not_collision_deletion() {
         let mut world = World::new(11, Preset::Blank);
         let bacterium = world.place_entity(EntityKind::Bacterium, 200.0, 130.0);
@@ -955,6 +1283,38 @@ mod tests {
         assert!(world.entities.index_of(bacterium).is_some());
         world.advance(20.0);
         assert!(world.entities.index_of(bacterium).is_none());
+        assert_eq!(world.counters.engulfments, 1);
+    }
+
+    #[test]
+    fn digestion_releases_cargo_and_capacity_can_be_reused() {
+        let mut world = World::new(105, Preset::Blank);
+        let phagocyte = world.place_entity(EntityKind::Phagocyte, 200.0, 130.0);
+        let index = world.entities.index_of(phagocyte).unwrap();
+        world.entities.a[index] = 1.0;
+        world.entities.d[index] = DIGESTION_SECONDS;
+
+        world.advance_phagocyte_digestion(index, DIGESTION_SECONDS - 1.0);
+        assert_eq!(world.entities.a[index], 1.0);
+        assert!((world.entities.d[index] - 1.0).abs() < 1.0e-5);
+        world.advance_phagocyte_digestion(index, 1.0);
+        assert_eq!(world.entities.a[index], 0.0);
+        assert_eq!(world.entities.d[index], 0.0);
+
+        world.entities.a[index] = PHAGOCYTE_CAPACITY;
+        world.entities.d[index] = MICROBE_DT_SECONDS * 0.5;
+        let bacterium = world.place_entity(EntityKind::Bacterium, 200.0, 130.0);
+        world.step_microbe(MICROBE_DT_SECONDS);
+        let index = world.entities.index_of(phagocyte).unwrap();
+        assert_eq!(world.entities.a[index], PHAGOCYTE_CAPACITY - 1.0);
+        assert_eq!(world.entities.target[index], bacterium);
+
+        world.entities.b[index] =
+            1.0 - MICROBE_DT_SECONDS / ENGULFMENT_SECONDS;
+        world.step_microbe(MICROBE_DT_SECONDS);
+        let index = world.entities.index_of(phagocyte).unwrap();
+        assert!(world.entities.index_of(bacterium).is_none());
+        assert_eq!(world.entities.a[index], PHAGOCYTE_CAPACITY);
         assert_eq!(world.counters.engulfments, 1);
     }
 
@@ -990,5 +1350,165 @@ mod tests {
         let index = world.entities.index_of(id).unwrap();
         assert!(world.counters.spikes > before_spikes);
         assert!(world.entities.b[index] > 0.0);
+    }
+
+    #[test]
+    fn neuron_cannot_respike_during_refractory_interval() {
+        let mut world = World::new(106, Preset::Cortical);
+        world.entities = Entities::new(1);
+        world.connections.clear();
+        world.events.clear();
+        let id = world
+            .spawn_neuron(EntityKind::NeuronExcitatory, 200.0, 130.0)
+            .unwrap();
+        let index = world.entities.index_of(id).unwrap();
+        world.entities.a[index] = -49.0;
+
+        world.step_neural(NEURAL_DT_SECONDS);
+        assert_eq!(world.counters.spikes, 1);
+        let refractory_until = world.entities.f[index];
+        world.entities.a[index] = -49.0;
+        world.step_neural(NEURAL_DT_SECONDS);
+        assert_eq!(world.counters.spikes, 1);
+        assert_eq!(world.entities.a[index], -68.0);
+
+        while world.time_seconds < refractory_until {
+            world.step_neural(NEURAL_DT_SECONDS);
+        }
+        world.entities.a[index] = -49.0;
+        world.step_neural(NEURAL_DT_SECONDS);
+        assert_eq!(world.counters.spikes, 2);
+    }
+
+    #[test]
+    fn signed_synaptic_events_are_delayed_and_expired() {
+        let mut world = World::new(107, Preset::Cortical);
+        world.entities = Entities::new(1);
+        world.connections.clear();
+        world.events.clear();
+        let target = world
+            .spawn_neuron(EntityKind::NeuronExcitatory, 200.0, 130.0)
+            .unwrap();
+        let index = world.entities.index_of(target).unwrap();
+        world.entities.a[index] = -68.0;
+        world.events.push(SynapticEvent {
+            delivery_seconds: 2.0 * NEURAL_DT_SECONDS,
+            target,
+            conductance_ns: 1.5,
+        });
+        world.events.push(SynapticEvent {
+            delivery_seconds: 2.0 * NEURAL_DT_SECONDS,
+            target,
+            conductance_ns: -2.5,
+        });
+
+        world.step_neural(NEURAL_DT_SECONDS);
+        assert_eq!(world.events.len(), 2);
+        assert_eq!(world.entities.c[index], 0.0);
+        assert_eq!(world.entities.d[index], 0.0);
+
+        world.step_neural(NEURAL_DT_SECONDS);
+        assert!(world.events.is_empty());
+        assert!(world.entities.c[index] > 0.0);
+        assert!(world.entities.d[index] > 0.0);
+    }
+
+    #[test]
+    fn neural_event_queue_is_bounded_and_due_events_expire() {
+        let mut world = World::new(108, Preset::Cortical);
+        world.entities = Entities::new(1);
+        world.connections.clear();
+        world.events.clear();
+        let source = world
+            .spawn_neuron(EntityKind::NeuronExcitatory, 200.0, 130.0)
+            .unwrap();
+        world.connections.push(Connection {
+            source,
+            target: source,
+            conductance_ns: 1.0,
+            delay_seconds: 1.0,
+        });
+        world.events.resize(
+            MAX_NEURAL_EVENTS,
+            SynapticEvent {
+                delivery_seconds: 10.0,
+                target: source,
+                conductance_ns: 0.5,
+            },
+        );
+        let index = world.entities.index_of(source).unwrap();
+        world.entities.a[index] = -49.0;
+
+        world.step_neural(NEURAL_DT_SECONDS);
+        assert_eq!(world.events.len(), MAX_NEURAL_EVENTS);
+        assert_eq!(world.last_status, STATUS_CAPACITY);
+
+        world.connections.clear();
+        for event in &mut world.events {
+            event.delivery_seconds = world.time_seconds;
+        }
+        world.step_neural(NEURAL_DT_SECONDS);
+        assert!(world.events.is_empty());
+    }
+
+    #[test]
+    fn state_hash_includes_clock_accumulator_rng_and_latent_state() {
+        let mut world = World::new(109, Preset::Blank);
+        let initial = world.state_hash();
+        world.advance(MICROBE_DT_SECONDS * 0.25);
+        assert_ne!(world.state_hash(), initial, "accumulator was not hashed");
+
+        let after_accumulator = world.state_hash();
+        world.rng.next_u64();
+        assert_ne!(world.state_hash(), after_accumulator, "RNG was not hashed");
+
+        let id = world.place_entity(EntityKind::Bacterium, 200.0, 130.0);
+        let index = world.entities.index_of(id).unwrap();
+        let before_latent_change = world.state_hash();
+        world.entities.e[index] += 0.01;
+        world.entities.f[index] += 0.02;
+        assert_ne!(
+            world.state_hash(),
+            before_latent_change,
+            "latent entity state was not hashed"
+        );
+
+        let before_time = world.state_hash();
+        world.advance(MICROBE_DT_SECONDS);
+        assert_ne!(world.state_hash(), before_time, "clock was not hashed");
+    }
+
+    #[test]
+    fn state_hash_includes_pending_fields_connections_and_events() {
+        let mut field_world = World::new(110, Preset::Blank);
+        let before_source = field_world.state_hash();
+        field_world.fields.add_local(GLUCOSE, 10.0, 10.0, 0.5);
+        assert_ne!(
+            field_world.state_hash(),
+            before_source,
+            "pending field source was not hashed"
+        );
+
+        let mut neural_world = World::new(111, Preset::Cortical);
+        let target = neural_world.entities.ids[0];
+        let before_event = neural_world.state_hash();
+        neural_world.events.push(SynapticEvent {
+            delivery_seconds: neural_world.time_seconds + 1.0,
+            target,
+            conductance_ns: 1.0,
+        });
+        assert_ne!(
+            neural_world.state_hash(),
+            before_event,
+            "neural event was not hashed"
+        );
+
+        let before_connection = neural_world.state_hash();
+        neural_world.connections[0].conductance_ns += 0.25;
+        assert_ne!(
+            neural_world.state_hash(),
+            before_connection,
+            "connection state was not hashed"
+        );
     }
 }

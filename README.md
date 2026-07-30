@@ -7,14 +7,14 @@ bounded set of cells, microbes, and environmental sources on a virtual slide,
 then observe and measure the resulting state. The cortical network remains
 available as a separate reduced-order preset.
 
-The current public site at [biologicalsetup.com](https://biologicalsetup.com/)
-still represents the accepted legacy release until this successor is reviewed
-and merged to the deployment branch.
+The site at [biologicalsetup.com](https://biologicalsetup.com/) is deployed from
+`main` by GitHub Pages after a successful workflow. Public availability and the
+currently served revision are external state and should be checked live rather
+than inferred from this repository.
 
 ## What the rebuild contains
 
-- a dependency-free Rust simulation engine compiled to a 75 KiB WebAssembly
-  module;
+- a compact, dependency-free Rust simulation engine compiled to WebAssembly;
 - a 400 µm × 260 µm culture slide with an explicit 20 µm effective depth;
 - two no-flux extracellular fields: glucose in mM and a generic cue in
   nM-equivalent display units;
@@ -106,11 +106,16 @@ Run the complete verification suite:
 npm run verify
 ```
 
-Run the bounded performance scenarios:
+Run the non-gating local profiling scenarios:
 
 ```sh
 npm run benchmark
 ```
+
+The benchmark reports default host–microbe stepping, a 2,000-agent culture,
+the cortical preset, and isolated snapshot preparation plus JavaScript copying.
+Wall-time results vary by runtime and device; the script has no release
+threshold.
 
 The GitHub Pages workflow builds the WebAssembly module from source, runs the
 native, ABI, interface, and reference tests, then publishes `dist/` only from

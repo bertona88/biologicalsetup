@@ -409,6 +409,73 @@ a {
   opacity: 0.9;
 }
 
+.chemistry-legend {
+  position: absolute;
+  z-index: 4;
+  top: 76px;
+  left: 50%;
+  display: flex;
+  gap: 14px;
+  padding: 7px 10px;
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(5, 16, 13, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.chemistry-legend[hidden] {
+  display: none;
+}
+
+.chemistry-key {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chemistry-key strong,
+.chemistry-key small {
+  display: block;
+  white-space: nowrap;
+}
+
+.chemistry-key strong {
+  font-size: 9px;
+}
+
+.chemistry-key small {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.chemistry-pattern {
+  display: block;
+  width: 30px;
+  height: 16px;
+  border: 1px solid rgba(238, 248, 241, 0.4);
+  border-radius: 3px;
+}
+
+.glucose-pattern {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 3px,
+      rgba(238, 248, 241, 0.9) 3px 4px
+    ),
+    rgba(117, 167, 255, 0.25);
+}
+
+.cue-pattern {
+  background:
+    radial-gradient(circle, rgba(238, 248, 241, 0.95) 0 1px, transparent 1.5px)
+      0 0 / 7px 7px,
+    rgba(255, 178, 87, 0.22);
+}
+
 .surface {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -494,7 +561,13 @@ a {
 
 .entity-tool[aria-disabled="true"] {
   cursor: not-allowed;
-  opacity: 0.38;
+  opacity: 0.58;
+}
+
+.entity-tool[aria-disabled="true"] small {
+  color: var(--amber);
+  text-overflow: initial;
+  white-space: normal;
 }
 
 .entity-tool strong,
@@ -653,18 +726,12 @@ a {
   color: var(--text);
 }
 
-.neural-tool,
 .neural-only {
   display: none;
 }
 
-[data-preset="3"] .neural-tool,
 [data-preset="3"] .neural-only {
-  display: grid;
-}
-
-[data-preset="3"] .entity-tool:not(.neural-tool) {
-  display: none;
+  display: flex;
 }
 
 .metrics-grid {
@@ -1051,7 +1118,7 @@ a {
 
 .scale-bar span {
   display: block;
-  width: 80px;
+  width: 0;
   height: 5px;
   border-right: 1px solid rgba(238, 248, 241, 0.85);
   border-bottom: 1px solid rgba(238, 248, 241, 0.85);
@@ -1376,7 +1443,25 @@ noscript {
   }
 
   .model-status {
+    min-height: 34px;
+    padding: 4px 7px;
+  }
+
+  .model-status span {
+    font-size: 8px;
+  }
+
+  .model-status small {
     display: none;
+  }
+
+  .chemistry-legend {
+    top: 128px;
+    right: 14px;
+    left: auto;
+    flex-direction: column;
+    gap: 5px;
+    transform: none;
   }
 
   .observation-switcher {

@@ -102,8 +102,12 @@ inflammation, membrane damage, or a clinical outcome.
 ### Environmental source
 
 Glucose and chemoattractant drops are field perturbations rather than living
-entities. Their placement, radius, amount, units, and time are recorded as
-actions.
+entities. Version 1 applies their channel, position, fixed placement radius, and
+amount through the primitive WebAssembly ABI. The browser may show a bounded
+human-readable summary, but neither the engine nor a shared recipe URL records a
+complete versioned action ledger. Exact replay of an evolved experiment
+therefore requires an external caller to retain the ordered ABI calls and step
+requests.
 
 ## Neural model family
 
@@ -128,7 +132,8 @@ Host–microbe entities do not interact with neural entities in version 1.
 
 A 64-bit seed controls stochastic decisions. For the same engine version,
 preset, seed, ordered action sequence, and step sequence, the world state must
-be reproducible.
+be reproducible. Version 1 can execute such a retained sequence
+deterministically; it does not export the sequence itself.
 
 The first release supports up to 8,192 live entities. Entity state uses
 structure-of-arrays storage, a uniform spatial hash for local queries, and

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Compose cells, bacteria, fields, and reduced-order neural circuits on a deterministic virtual slide powered by Rust and WebAssembly."
+    />
+    <meta name="theme-color" content="#06100e" />
+    <title>BiologicalSetup — Virtual slide laboratory</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <a class="skip-link" href="#slide">Skip to virtual slide</a>
+
+    <div class="app" id="app" data-ready="false">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="BiologicalSetup laboratory">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+          <span>
+            <strong>Biological</strong><em>Setup</em>
+          </span>
+        </a>
+
+        <div class="preset-switcher" aria-label="Specimen presets">
+          <span class="control-label">Specimen</span>
+          <select id="preset-select" aria-label="Select specimen preset">
+            <option value="1" selected>Host–microbe frontier</option>
+            <option value="2">Phagocyte pursuit</option>
+            <option value="0">Blank culture slide</option>
+            <option value="3">Cortical microcircuit</option>
+          </select>
+        </div>
+
+        <nav class="top-actions" aria-label="Site">
+          <span class="engine-badge" id="engine-badge">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>Loading engine</span>
+          </span>
+          <a class="nav-link active" href="./" aria-current="page">Lab</a>
+          <a class="nav-link" href="./references.html">References</a>
+          <button
+            class="icon-button mobile-only"
+            id="mobile-tools"
+            type="button"
+            aria-label="Open entity tray"
+            aria-controls="entity-tray"
+            aria-expanded="false"
+          >
+            +
+          </button>
+        </nav>
+      </header>
+
+      <main class="lab">
+        <section class="slide-stage" id="slide" aria-labelledby="slide-title">
+          <canvas
+            id="specimen-canvas"
+            tabindex="0"
+            aria-label="Interactive 400 by 260 micrometre virtual biological slide. Choose an entity, then click or tap to place it. Use arrow keys to move the keyboard cursor and Enter to act."
+          ></canvas>
+
+          <div class="slide-vignette" aria-hidden="true"></div>
+
+          <div class="slide-header">
+            <div>
+              <p class="eyebrow" id="model-family">CULTURE CHASSIS · v1</p>
+              <h1 id="slide-title">Host–microbe frontier</h1>
+            </div>
+            <button
+              class="model-status"
+              id="model-status"
+              type="button"
+              aria-controls="model-sheet"
+              aria-expanded="false"
+            >
+              <span>Reduced-order</span>
+              <small>View rules</small>
+            </button>
+          </div>
+
+          <div class="observation-switcher" role="group" aria-label="Observation view">
+            <button class="view-button active" type="button" data-view="0" aria-pressed="true">
+              <span class="view-glyph phase-glyph" aria-hidden="true"></span>
+              Phase
+            </button>
+            <button class="view-button" type="button" data-view="1" aria-pressed="false">
+              <span class="view-glyph label-glyph" aria-hidden="true"></span>
+              Labels
+            </button>
+            <button class="view-button" type="button" data-view="2" aria-pressed="false">
+              <span class="view-glyph field-glyph" aria-hidden="true"></span>
+              Chemistry
+            </button>
+          </div>
+
+          <div
+            class="chemistry-legend"
+            id="chemistry-legend"
+            aria-label="Chemistry view pattern legend"
+            hidden
+          >
+            <span class="chemistry-key">
+              <i class="chemistry-pattern glucose-pattern" aria-hidden="true"></i>
+              <span><strong>Glucose</strong><small>solid contours · mM</small></span>
+            </span>
+            <span class="chemistry-key">
+              <i class="chemistry-pattern cue-pattern" aria-hidden="true"></i>
+              <span><strong>Cue</strong><small>dotted field · nM-eq</small></span>
+            </span>
+          </div>
+
+          <aside class="entity-tray surface" id="entity-tray" aria-label="Entity tray">
+            <div class="surface-heading">
+              <div>
+                <p class="eyebrow">COMPOSE</p>
+                <h2>Drop on slide</h2>
+              </div>
+              <button
+                class="close-button mobile-only"
+                id="close-tools"
+                type="button"
+                aria-label="Close entity tray"
+              >
+                ×
+              </button>
+            </div>
+
+            <p class="tray-help">Drag, or select then tap the slide.</p>
+
+            <div class="entity-list" id="entity-list">
+              <button class="entity-tool active" type="button" data-kind="1" draggable="true">
+                <span class="entity-icon bacteria-icon" aria-hidden="true"></span>
+                <span><strong>Bacterium</strong><small><i>E. coli</i>-like agent</small></span>
+                <kbd>B</kbd>
+              </button>
+              <button class="entity-tool" type="button" data-kind="2" draggable="true">
+                <span class="entity-icon phagocyte-icon" aria-hidden="true"></span>
+                <span><strong>Phagocyte</strong><small>Neutrophil-like</small></span>
+                <kbd>P</kbd>
+              </button>
+              <button class="entity-tool" type="button" data-kind="3" draggable="true">
+                <span class="entity-icon epithelial-icon" aria-hidden="true"></span>
+                <span><strong>Host cell</strong><small>Epithelial-like</small></span>
+                <kbd>H</kbd>
+              </button>
+              <button class="entity-tool field-tool" type="button" data-kind="10" draggable="true">
+                <span class="entity-icon glucose-icon" aria-hidden="true"></span>
+                <span><strong>Glucose</strong><small>1.0 mM local pulse</small></span>
+                <kbd>G</kbd>
+              </button>
+              <button class="entity-tool field-tool" type="button" data-kind="11" draggable="true">
+                <span class="entity-icon cue-icon" aria-hidden="true"></span>
+                <span><strong>Cue</strong><small>1.0 nM-eq pulse</small></span>
+                <kbd>C</kbd>
+              </button>
+              <button class="entity-tool neural-tool" type="button" data-kind="4" draggable="true">
+                <span class="entity-icon excitatory-icon" aria-hidden="true"></span>
+                <span><strong>Excitatory</strong><small>Reduced LIF neuron</small></span>
+                <kbd>E</kbd>
+              </button>
+              <button class="entity-tool neural-tool" type="button" data-kind="5" draggable="true">
+                <span class="entity-icon inhibitory-icon" aria-hidden="true"></span>
+                <span><strong>Inhibitory</strong><small>Reduced LIF neuron</small></span>
+                <kbd>I</kbd>
+              </button>
+            </div>
+
+            <div class="tool-divider"></div>
+
+            <div class="utility-tools" role="group" aria-label="Slide tools">
+              <button type="button" class="utility-tool" data-tool="inspect">
+                <span aria-hidden="true">⌖</span> Inspect
+              </button>
+              <button type="button" class="utility-tool" data-tool="erase">
+                <span aria-hidden="true">⌫</span> Erase
+              </button>
+              <button type="button" class="utility-tool neural-only" data-tool="stimulate">
+                <span aria-hidden="true">ϟ</span> Stimulate
+              </button>
+            </div>
+          </aside>
+
+          <aside class="analysis-panel surface" id="analysis-panel" aria-label="Measurements">
+            <div class="surface-heading">
+              <div>
+                <p class="eyebrow">LIVE READOUT</p>
+                <h2>Measurements</h2>
+              </div>
+              <button
+                class="close-button mobile-only"
+                id="close-analysis"
+                type="button"
+                aria-label="Close measurements"
+              >
+                ×
+              </button>
+            </div>
+
+            <div class="metrics-grid" aria-live="off">
+              <div class="metric">
+                <span id="metric-primary-label">Bacteria</span>
+                <strong id="metric-primary">—</strong>
+                <small id="metric-primary-unit">cells</small>
+              </div>
+              <div class="metric">
+                <span id="metric-secondary-label">Mean glucose</span>
+                <strong id="metric-secondary">—</strong>
+                <small id="metric-secondary-unit">mM</small>
+              </div>
+              <div class="metric">
+                <span id="metric-tertiary-label">Engulfed</span>
+                <strong id="metric-tertiary">—</strong>
+                <small id="metric-tertiary-unit">events</small>
+              </div>
+            </div>
+
+            <div class="chart-wrap">
+              <div class="chart-key" id="chart-key">
+                <span><i class="key-a"></i><b>Bacteria</b></span>
+                <span><i class="key-b"></i><b>Glucose</b></span>
+              </div>
+              <canvas
+                id="metrics-chart"
+                width="460"
+                height="150"
+                aria-label="Population and chemistry history chart"
+              ></canvas>
+            </div>
+
+            <section class="selection-card" id="selection-card">
+              <div class="empty-selection">
+                <span aria-hidden="true">⌖</span>
+                <p>Select an entity to inspect its engine state.</p>
+              </div>
+            </section>
+
+            <section class="event-section">
+              <div class="event-heading">
+                <h3>Event ledger</h3>
+                <span id="event-count">0 events</span>
+              </div>
+              <ol class="event-log" id="event-log" aria-live="polite">
+                <li><time>0:00</time><span>Deterministic specimen initialized.</span></li>
+              </ol>
+            </section>
+          </aside>
+
+          <section class="model-sheet surface" id="model-sheet" hidden>
+            <div class="surface-heading">
+              <div>
+                <p class="eyebrow">INTERACTION CONTRACT</p>
+                <h2>What can happen here</h2>
+              </div>
+              <button class="close-button" id="close-model-sheet" type="button" aria-label="Close model rules">
+                ×
+              </button>
+            </div>
+            <div id="model-sheet-content"></div>
+            <a class="text-link" href="./references.html">Open equations and primary sources →</a>
+          </section>
+
+          <div class="onboarding" id="onboarding">
+            <span class="onboarding-index">01</span>
+            <p><strong>Compose an experiment.</strong> Add glucose, place bacteria, then add a phagocyte.</p>
+            <button type="button" id="dismiss-onboarding" aria-label="Dismiss instruction">Got it</button>
+          </div>
+
+          <div class="cursor-readout" id="cursor-readout" aria-hidden="true">x 000 · y 000 µm</div>
+
+          <div class="scale-bar" aria-label="Scale bar 50 micrometres">
+            <span id="scale-bar-length"></span><small>50 µm</small>
+          </div>
+
+          <div class="toast" id="toast" role="status" aria-live="polite"></div>
+          <div class="sr-only" id="canvas-status" aria-live="polite"></div>
+        </section>
+      </main>
+
+      <footer class="timeline">
+        <button class="transport-button" id="play-pause" type="button" aria-label="Pause simulation">
+          <span class="pause-icon" aria-hidden="true"></span>
+        </button>
+        <button class="transport-button" id="step-once" type="button" aria-label="Advance one model step">
+          <span aria-hidden="true">›|</span>
+        </button>
+        <div class="time-readout">
+          <span id="time-value">00:00.0</span>
+          <small id="time-unit">biological time</small>
+        </div>
+        <div class="timeline-track" aria-hidden="true">
+          <span id="timeline-progress"></span>
+          <i id="timeline-marker"></i>
+        </div>
+        <label class="speed-control">
+          <span>Rate</span>
+          <select id="speed-select" aria-label="Simulation time rate">
+            <option value="1">1×</option>
+            <option value="10" selected>10×</option>
+            <option value="30">30×</option>
+          </select>
+        </label>
+        <label class="seed-control">
+          <span>Seed</span>
+          <input id="seed-input" inputmode="numeric" value="164271829" aria-label="Deterministic seed" />
+        </label>
+        <button class="footer-button" id="reset-button" type="button">Reset</button>
+        <button class="footer-button" id="share-button" type="button">Share recipe</button>
+        <button
+          class="footer-button mobile-only"
+          id="mobile-analysis"
+          type="button"
+          aria-controls="analysis-panel"
+          aria-expanded="false"
+        >
+          Readouts
+        </button>
+      </footer>
+    </div>
+
+    <noscript>BiologicalSetup requires JavaScript and WebAssembly to run the virtual slide.</noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

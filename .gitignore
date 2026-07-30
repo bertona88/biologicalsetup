@@ -1,3 +1,7 @@
 .DS_Store
 node_modules/
 prototype/node_modules/
+.toolchains/
+target/
+dist/
+public/biological_engine.wasm

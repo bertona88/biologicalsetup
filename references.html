@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Equations, parameter provenance, validity limits, and primary sources for every BiologicalSetup model component."
+    />
+    <meta name="theme-color" content="#06100e" />
+    <title>Model references — BiologicalSetup</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body class="references-body">
+    <a class="skip-link" href="#reference-catalog">Skip to references</a>
+
+    <header class="references-topbar">
+      <a class="brand" href="./" aria-label="BiologicalSetup laboratory">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><strong>Biological</strong><em>Setup</em></span>
+      </a>
+      <nav aria-label="Site">
+        <a class="nav-link" href="./">Lab</a>
+        <a class="nav-link active" href="./references.html" aria-current="page">References</a>
+      </nav>
+    </header>
+
+    <main class="references-main">
+      <section class="references-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">MODEL EVIDENCE · REVISION 2026.07</p>
+          <h1>The science behind<br />each simulated rule.</h1>
+          <p class="hero-lede">
+            This is not a bibliography used as decoration. Every entry below says
+            what the source constrains, what BiologicalSetup actually implements,
+            which constants were adapted, and where the claim stops.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-link" href="./">Open the virtual slide</a>
+            <a class="secondary-link" href="#model-matrix">Inspect equations</a>
+          </div>
+        </div>
+
+        <div class="evidence-summary" aria-label="Reference coverage summary">
+          <div class="summary-orbit" aria-hidden="true">
+            <i></i><i></i><i></i>
+            <span>v1</span>
+          </div>
+          <dl>
+            <div><dt>Primary sources</dt><dd id="source-total">—</dd></div>
+            <div><dt>Implemented mechanisms</dt><dd>10</dd></div>
+            <div><dt>Illustrative parameter sets</dt><dd>7</dd></div>
+            <div><dt>Clinical claims</dt><dd>0</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="evidence-callout">
+        <span class="callout-index">READ THIS FIRST</span>
+        <p>
+          A paper can support an equation or constrain a mechanism without
+          validating the whole simulator. Parameters marked
+          <strong>illustrative</strong> were chosen for a stable, observable
+          browser experiment and must not be treated as organism-, culture-, or
+          patient-specific predictions.
+        </p>
+      </section>
+
+      <section class="model-matrix" id="model-matrix" aria-labelledby="matrix-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">EXECUTABLE MODEL CATALOG</p>
+            <h2 id="matrix-title">Equation → engine → evidence</h2>
+          </div>
+          <p>All time stepping is independent of rendering frame rate.</p>
+        </div>
+
+        <div class="matrix-table-wrap">
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th scope="col">Mechanism</th>
+                <th scope="col">Implemented form</th>
+                <th scope="col">Units / step</th>
+                <th scope="col">Evidence status</th>
+                <th scope="col">Validity boundary</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="diffusion">
+                <th scope="row"><span class="domain-dot physics"></span>Field transport</th>
+                <td><code>∂c/∂t = D∇²c + q − kc</code></td>
+                <td>µm² s⁻¹ · 50 ms</td>
+                <td><span class="status canonical">canonical law</span></td>
+                <td>2D effective-depth, no-flux plane</td>
+              </tr>
+              <tr id="bacterial-growth">
+                <th scope="row"><span class="domain-dot chemistry"></span>Growth + uptake</th>
+                <td><code>µ = µmax S/(Ks + S)</code></td>
+                <td>mM, pg · 50 ms</td>
+                <td><span class="status adapted">adapted</span></td>
+                <td>Illustrative E. coli-like agent</td>
+              </tr>
+              <tr id="bacterial-chemotaxis">
+                <th scope="row"><span class="domain-dot biology"></span>Run–tumble sensing</th>
+                <td><code>λ = λ₀ exp[−χ(mfast − mslow)]</code></td>
+                <td>seconds · 50 ms</td>
+                <td><span class="status reduced">coarse-grained</span></td>
+                <td>Two-filter temporal comparison</td>
+              </tr>
+              <tr id="phagocyte-chemotaxis">
+                <th scope="row"><span class="domain-dot biology"></span>Immune pursuit</th>
+                <td><code>dθ = bias(∇c)dt + σdW</code></td>
+                <td>µm s⁻¹ · 50 ms</td>
+                <td><span class="status reduced">reduced-order</span></td>
+                <td>Generic cue, no receptor model</td>
+              </tr>
+              <tr id="phagocytosis">
+                <th scope="row"><span class="domain-dot biology"></span>Engulfment</th>
+                <td><code>search → contact → cup e∈[0,1] → cargo</code></td>
+                <td>15 s illustrative dwell</td>
+                <td><span class="status adapted">adapted</span></td>
+                <td>No phagosome or killing chemistry</td>
+              </tr>
+              <tr id="epithelial-stress">
+                <th scope="row"><span class="domain-dot biology"></span>Host stress</th>
+                <td><code>dz/dt = burden − recovery</code></td>
+                <td>dimensionless proxy</td>
+                <td><span class="status illustrative">illustrative</span></td>
+                <td>Not viability, toxicity, or inflammation</td>
+              </tr>
+              <tr id="neuronal-dynamics">
+                <th scope="row"><span class="domain-dot biology"></span>Neural voltage</th>
+                <td><code>C dV/dt = −gL(V−EL) + I + g(Erev−V)</code></td>
+                <td>pA, pF, nS, mV · 1 ms</td>
+                <td><span class="status canonical">canonical reduction</span></td>
+                <td>Synthetic LIF network</td>
+              </tr>
+              <tr id="calcium-indicator">
+                <th scope="row"><span class="domain-dot observation"></span>Calcium label</th>
+                <td><code>spike → indicator increment → exponential decay</code></td>
+                <td>qualitative proxy</td>
+                <td><span class="status reduced">conceptual constraint</span></td>
+                <td>No named GCaMP calibration</td>
+              </tr>
+              <tr id="phase-observation">
+                <th scope="row"><span class="domain-dot observation"></span>Phase-like view</th>
+                <td><code>geometry → qualitative optical contrast</code></td>
+                <td>normalized display</td>
+                <td><span class="status illustrative">illustrative</span></td>
+                <td>Not a wave-optical reconstruction</td>
+              </tr>
+              <tr id="determinism">
+                <th scope="row"><span class="domain-dot computation"></span>Determinism</th>
+                <td><code>seed + actions + fixed steps → state hash</code></td>
+                <td>64-bit seed</td>
+                <td><span class="status adapted">engineering method</span></td>
+                <td>Guaranteed only within engine version</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="reference-catalog" id="reference-catalog" aria-labelledby="catalog-title">
+        <div class="section-heading catalog-heading">
+          <div>
+            <p class="eyebrow">PRIMARY LITERATURE</p>
+            <h2 id="catalog-title">Claim-to-source map</h2>
+          </div>
+          <label class="reference-search">
+            <span class="sr-only">Search references</span>
+            <input id="reference-search" type="search" placeholder="Search mechanism, author, equation…" />
+          </label>
+        </div>
+
+        <div class="filter-bar" role="group" aria-label="Filter references by domain">
+          <button class="filter-button active" type="button" data-domain="all" aria-pressed="true">All</button>
+          <button class="filter-button" type="button" data-domain="physics" aria-pressed="false">Physics</button>
+          <button class="filter-button" type="button" data-domain="chemistry" aria-pressed="false">Chemistry</button>
+          <button class="filter-button" type="button" data-domain="biology" aria-pressed="false">Biology</button>
+          <button class="filter-button" type="button" data-domain="observation" aria-pressed="false">Observation</button>
+          <button class="filter-button" type="button" data-domain="computation" aria-pressed="false">Computation</button>
+          <span class="filter-count" id="filter-count">—</span>
+        </div>
+
+        <div class="reference-grid" id="reference-grid"></div>
+        <p class="empty-results" id="empty-results" hidden>No references match this filter.</p>
+      </section>
+
+      <section class="nonclaims">
+        <div>
+          <p class="eyebrow">CLAIM GATE</p>
+          <h2>What these sources do not make this.</h2>
+        </div>
+        <ul>
+          <li>Not a calibrated infection or immune-response predictor.</li>
+          <li>Not a toxicity, viability, drug-response, or treatment model.</li>
+          <li>Not a reconstructed cortical circuit or electrophysiology tool.</li>
+          <li>Not a quantitative microscope, photon detector, or spectral model.</li>
+          <li>Not portable across model versions without an explicit migration.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="references-footer">
+      <span>BiologicalSetup · model ABI 1</span>
+      <a href="https://github.com/bertona88/biologicalsetup">Source repository</a>
+      <a href="./">Return to lab →</a>
+    </footer>
+
+    <script type="module" src="/src/references.js"></script>
+  </body>
+</html>
+
